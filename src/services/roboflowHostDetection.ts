@@ -5,54 +5,36 @@
  * Requires `axios` and `@env` values from `.env` (see `.env.example`).
  */
 import axios from 'axios';
-import {
-  ROBOFLOW_API_KEY,
-  ROBOFLOW_PROJECT_BIKE_HELMET,
-  ROBOFLOW_PROJECT_MOBILE_PHONE,
-  ROBOFLOW_PROJECT_NUMBER_PLATE,
-  ROBOFLOW_PROJECT_SEATBELT,
-  ROBOFLOW_VERSION_BIKE_HELMET,
-  ROBOFLOW_VERSION_MOBILE_PHONE,
-  ROBOFLOW_VERSION_NUMBER_PLATE,
-  ROBOFLOW_VERSION_SEATBELT,
-} from '@env';
+import { ROBOFLOW_API_KEY } from '@env';
+import { getRoboflowDeployConfig, type RoboflowTrafficProject } from '../config/roboflowModels';
 
-export type RoboflowTrafficProject =
-  | 'seatbelt'
-  | 'number_plate'
-  | 'mobile_phone'
-  | 'bike_helmet';
+export type { RoboflowTrafficProject } from '../config/roboflowModels';
 
-function projectIdFor(key: RoboflowTrafficProject): string {
-  switch (key) {
-    case 'seatbelt':
-      return ROBOFLOW_PROJECT_SEATBELT;
-    case 'number_plate':
-      return ROBOFLOW_PROJECT_NUMBER_PLATE;
-    case 'mobile_phone':
-      return ROBOFLOW_PROJECT_MOBILE_PHONE;
-    case 'bike_helmet':
-      return ROBOFLOW_PROJECT_BIKE_HELMET;
+const LOG_PREFIX = '[Roboflow]';
+
+function rfDebug(...args: unknown[]) {
+  if (__DEV__) {
+    console.log(LOG_PREFIX, ...args);
   }
 }
 
-/** Strip optional leading "v"; default "1" if unset or empty. */
-function normalizeModelVersion(raw: string | undefined): string {
-  const t = raw?.trim().replace(/^v/i, '') ?? '';
-  return t.length > 0 ? t : '1';
+function rfWarn(...args: unknown[]) {
+  console.warn(LOG_PREFIX, ...args);
 }
 
-function modelVersionFor(project: RoboflowTrafficProject): string {
-  switch (project) {
-    case 'seatbelt':
-      return normalizeModelVersion(ROBOFLOW_VERSION_SEATBELT);
-    case 'number_plate':
-      return normalizeModelVersion(ROBOFLOW_VERSION_NUMBER_PLATE);
-    case 'mobile_phone':
-      return normalizeModelVersion(ROBOFLOW_VERSION_MOBILE_PHONE);
-    case 'bike_helmet':
-      return normalizeModelVersion(ROBOFLOW_VERSION_BIKE_HELMET);
+/** Safe URI hint for logs (no long paths). */
+function uriKind(uri: string): string {
+  const u = uri.slice(0, 32);
+  if (uri.startsWith('content://')) {
+    return 'content://…';
   }
+  if (uri.startsWith('file://')) {
+    return 'file://…';
+  }
+  if (/^https?:\/\//i.test(uri)) {
+    return 'remote-url';
+  }
+  return u.length < uri.length ? `${u}…` : u;
 }
 
 export type RoboflowDetectParams = {
@@ -93,40 +75,85 @@ export async function runRoboflowHostDetection(
 ): Promise<unknown> {
   const apiKey = ROBOFLOW_API_KEY?.trim();
   if (!apiKey) {
+    rfWarn('inference aborted: ROBOFLOW_API_KEY is empty (check .env and Metro --reset-cache)');
     throw new Error('ROBOFLOW_API_KEY is missing. Set it in local .env (never commit).');
   }
 
-  const projectId = projectIdFor(params.project).trim();
+  const { projectId, version } = getRoboflowDeployConfig(params.project);
   if (!projectId) {
+    rfWarn(`inference aborted: missing project id in @env for "${params.project}"`);
     throw new Error(`Roboflow project id missing for "${params.project}" in @env.`);
   }
 
-  const version = modelVersionFor(params.project);
   const url = `https://detect.roboflow.com/${encodeURIComponent(projectId)}/${encodeURIComponent(version)}`;
+
+  const mimeType = params.mimeType ?? 'image/jpeg';
+  const fileName = params.fileName ?? 'frame.jpg';
+  const timeoutMs = params.timeoutMs ?? 60_000;
+
+  rfDebug('request', {
+    project: params.project,
+    projectId,
+    version,
+    uriKind: uriKind(params.imageUri),
+    mimeType,
+    fileName,
+    timeoutMs,
+    apiKeyPresent: true,
+  });
 
   const form = new FormData();
   form.append('file', {
     uri: params.imageUri,
-    type: params.mimeType ?? 'image/jpeg',
-    name: params.fileName ?? 'frame.jpg',
+    type: mimeType,
+    name: fileName,
   } as unknown as Blob);
 
   const maxRetries = Math.max(0, params.maxRetries ?? 2);
+  const started = Date.now();
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       const { data } = await axios.post<unknown>(url, form, {
         params: { api_key: apiKey },
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: params.timeoutMs ?? 60_000,
+        timeout: timeoutMs,
+      });
+      rfDebug('response ok', {
+        project: params.project,
+        version,
+        attempt: attempt + 1,
+        ms: Date.now() - started,
       });
       return data;
     } catch (e) {
+      if (axios.isAxiosError(e)) {
+        const ax = e;
+        const status = ax.response?.status;
+        const detail =
+          typeof ax.response?.data === 'string' ? ax.response.data : JSON.stringify(ax.response?.data);
+        rfWarn('request error', {
+          project: params.project,
+          projectId,
+          version,
+          attempt: attempt + 1,
+          maxAttempts: maxRetries + 1,
+          status: status ?? 'no-status',
+          code: ax.code,
+          message: ax.message,
+          detail: detail?.slice?.(0, 500) ?? detail,
+        });
+      } else {
+        rfWarn('request threw (non-axios)', { project: params.project, error: String(e) });
+      }
+
       const canRetry = attempt < maxRetries && shouldRetryAxiosError(e);
       if (canRetry) {
         // Exponential backoff + small jitter to reduce burst pressure.
         const base = 600 * Math.pow(2, attempt);
         const jitter = Math.floor(Math.random() * 200);
-        await sleep(base + jitter);
+        const waitMs = base + jitter;
+        rfWarn('retrying after backoff', { waitMs, nextAttempt: attempt + 2 });
+        await sleep(waitMs);
         continue;
       }
       if (axios.isAxiosError(e)) {
@@ -139,5 +166,6 @@ export async function runRoboflowHostDetection(
       throw e;
     }
   }
+  rfWarn('exhausted retries', { project: params.project, projectId, version });
   throw new Error('Roboflow request unexpectedly exhausted retries.');
 }

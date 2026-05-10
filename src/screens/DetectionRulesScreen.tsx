@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import {
@@ -22,11 +22,14 @@ import {
   challanBundleObjectPath,
   sessionFrameObjectPath,
 } from '../config/storagePaths';
+import { getRoboflowDeployRegistry, listRoboflowTrafficProjects } from '../config/roboflowModels';
 
 export function DetectionRulesScreen() {
   const plateExample = ' ab-12 c  ';
   const display = normalizePlateForDisplay(plateExample);
   const canonical = normalizePlateCanonical(plateExample);
+  const roboflowDeploy = useMemo(() => getRoboflowDeployRegistry(), []);
+  const roboflowProjectOrder = useMemo(() => [...listRoboflowTrafficProjects()], []);
   const [loadingRules, setLoadingRules] = useState(true);
   const [rules, setRules] = useState<{ id: string; title: string; details: string }[]>([]);
 
@@ -112,6 +115,23 @@ export function DetectionRulesScreen() {
       </View>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>Roboflow hosted models (.env)</Text>
+        <Text style={styles.cardSub}>
+          Project slug + deploy version are read at runtime from <Text style={styles.mono}>ROBOFLOW_PROJECT_*</Text> and{' '}
+          <Text style={styles.mono}>ROBOFLOW_VERSION_*</Text>. Restart Metro with{' '}
+          <Text style={styles.mono}>--reset-cache</Text> after changing them.
+        </Text>
+        {roboflowProjectOrder.map((key, i) => (
+          <View key={key} style={[styles.deployRow, i > 0 && styles.tableRowBorder]}>
+            <Text style={styles.mono}>{key}</Text>
+            <Text style={styles.monoSmall} numberOfLines={2}>
+              {roboflowDeploy[key].projectId} · v{roboflowDeploy[key].version}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Roboflow class → spec violation</Text>
         <Text style={styles.cardSub}>
           Labels must match your deployed models. Spec ids are used on challans and in Firestore.
@@ -189,4 +209,5 @@ const styles = StyleSheet.create({
   pdfLabel: { fontSize: 13, color: '#374151' },
   pdfSource: { fontSize: 11, color: '#2563eb' },
   ruleTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  deployRow: { gap: 4, paddingVertical: 8 },
 });

@@ -36,9 +36,20 @@ function check(name, condition, failures) {
 }
 
 function parseEnvValue(raw, key) {
-  const re = new RegExp(`^${key}=(.*)$`, 'm');
+  const re = new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`, 'm');
   const m = raw.match(re);
-  return m ? m[1].trim() : '';
+  if (!m) {
+    return '';
+  }
+  let v = m[1].trim();
+  const hash = v.indexOf('#');
+  if (hash >= 0) {
+    v = v.slice(0, hash).trim();
+  }
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
 }
 
 function main() {
@@ -62,6 +73,21 @@ function main() {
   if (env != null) {
     const api = parseEnvValue(env, 'ROBOFLOW_API_KEY');
     check('.env has ROBOFLOW_API_KEY configured', api.length > 0, failures);
+
+    const versionKeys = [
+      'ROBOFLOW_VERSION_SEATBELT',
+      'ROBOFLOW_VERSION_NUMBER_PLATE',
+      'ROBOFLOW_VERSION_MOBILE_PHONE',
+      'ROBOFLOW_VERSION_BIKE_HELMET',
+    ];
+    for (const vk of versionKeys) {
+      const v = parseEnvValue(env, vk);
+      const ok = /^\d+$/.test(v);
+      if (!ok) {
+        console.error(`  → ${vk} resolved to ${JSON.stringify(v)} (expected digits only, e.g. 2 for deploy v2). Copy from .env.example.`);
+      }
+      check(`.env ${vk} is a non-empty integer (Roboflow deploy)`, ok, failures);
+    }
   } else {
     check('.env exists for local run', false, failures);
   }
