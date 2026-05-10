@@ -9,6 +9,8 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -45,6 +47,10 @@ export function LoginScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Logo */}
         <View style={styles.logoWrap}>
@@ -76,6 +82,9 @@ export function LoginScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="next"
             />
           </View>
 
@@ -89,10 +98,20 @@ export function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={handleLogin}
             />
           </View>
 
-          <Pressable style={styles.btn} onPress={handleLogin} disabled={loading}>
+          <Pressable
+            style={[styles.btn, loading && styles.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in"
+            accessibilityState={{ disabled: loading }}>
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
@@ -107,19 +126,22 @@ export function LoginScreen() {
           </Pressable>
 
           <View style={styles.demoBox}>
-            <Text style={styles.demoTitle}>Firebase Auth</Text>
+            <Text style={styles.demoTitle}>First time here?</Text>
             <Text style={styles.demoHint}>
-              Sign in with your Firebase email/password or create a new account from the Sign Up screen.
+              Use the email and password your administrator gave you, or tap Create account if self-sign-up is
+              enabled for your organization.
             </Text>
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#2563eb' },
+  keyboard: { flex: 1 },
   scroll: { flexGrow: 1, padding: 20, alignItems: 'center', justifyContent: 'center' },
   logoWrap: { alignItems: 'center', marginBottom: 32 },
   logoCircle: {
@@ -174,7 +196,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
     marginBottom: 20,
+    minHeight: 48,
+    justifyContent: 'center',
   },
+  btnDisabled: { opacity: 0.85 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   linkText: {
     textAlign: 'center',

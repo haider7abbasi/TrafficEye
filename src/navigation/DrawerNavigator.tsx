@@ -46,7 +46,7 @@ const OFFICER_MENU_ITEMS: {
   params?: object;
 }[] = [
   { key: 'MainTabs', label: 'Dashboard', icon: '🏠', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'Capture', icon: '📷', params: { screen: 'Capture' } },
+  { key: 'MainTabs', label: 'Scan', icon: '📷', params: { screen: 'Capture' } },
   { key: 'MainTabs', label: 'History', icon: '📋', params: { screen: 'History' } },
   { key: 'CandidateQueue', label: 'Candidate Queue', icon: '🧾' },
   { key: 'MyChallans', label: 'My Challans', icon: '🗂️' },
@@ -64,7 +64,7 @@ const ADMIN_MENU_ITEMS: {
   params?: object;
 }[] = [
   { key: 'MainTabs', label: 'Dashboard', icon: '🏠', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'Capture', icon: '📷', params: { screen: 'Capture' } },
+  { key: 'MainTabs', label: 'Scan', icon: '📷', params: { screen: 'Capture' } },
   { key: 'MainTabs', label: 'History', icon: '📋', params: { screen: 'History' } },
   { key: 'MyChallans', label: 'My Challans', icon: '🗂️' },
   { key: 'AllChallans', label: 'All Challans', icon: '📚' },
@@ -219,7 +219,10 @@ export function DrawerNavigator() {
         headerLeft: () => (
           <Pressable
             onPress={() => navigation.toggleDrawer()}
-            style={{ marginLeft: 14, padding: 4 }}>
+            style={{ marginLeft: 14, padding: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel="Open navigation menu"
+            hitSlop={12}>
             <Text style={{ color: '#fff', fontSize: 24 }}>☰</Text>
           </Pressable>
         ),

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -13,8 +13,9 @@ import { persistor, store } from './store';
 
 function AuthSplash() {
   return (
-    <View style={styles.splash} accessibilityLabel="Loading">
+    <View style={styles.splash} accessibilityLabel="Loading account">
       <ActivityIndicator size="large" color="#ffffff" />
+      <Text style={styles.splashText}>Checking your session…</Text>
     </View>
   );
 }
@@ -23,6 +24,7 @@ function PersistLoading() {
   return (
     <View style={styles.splash} accessibilityLabel="Restoring saved preferences">
       <ActivityIndicator size="large" color="#ffffff" />
+      <Text style={styles.splashText}>Restoring your settings…</Text>
     </View>
   );
 }
@@ -94,5 +96,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#2563eb',
+    gap: 16,
+  },
+  splashText: {
+    color: '#e0e7ff',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });

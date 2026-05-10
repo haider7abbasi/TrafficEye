@@ -30,6 +30,7 @@ export function BottomTabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           height: 64,
           borderTopWidth: 1,
@@ -49,7 +50,8 @@ export function BottomTabNavigator() {
         name="Capture"
         component={CaptureScreen}
         options={{
-          tabBarLabel: 'Capture',
+          tabBarLabel: 'Scan',
+          tabBarAccessibilityLabel: 'Scan, open camera and detection',
           tabBarIcon: ({ focused }) => <TabIcon emoji="📷" focused={focused} />,
         }}
       />
@@ -58,6 +60,7 @@ export function BottomTabNavigator() {
         component={HistoryScreen}
         options={{
           tabBarLabel: 'History',
+          tabBarAccessibilityLabel: 'Violation history',
           tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,
         }}
       />

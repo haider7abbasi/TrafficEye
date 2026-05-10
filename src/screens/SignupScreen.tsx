@@ -9,6 +9,8 @@ import {
   StatusBar,
   ScrollView,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -56,6 +58,10 @@ export function SignupScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
+      <KeyboardAvoidingView
+        style={styles.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.logoWrap}>
           <View style={styles.logoCircle}>
@@ -67,6 +73,10 @@ export function SignupScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign Up</Text>
+          <Text style={styles.cardSubtitle}>
+            After registering, an administrator may need to approve your account before you can use scanning
+            features.
+          </Text>
 
           {!!error && (
             <View style={styles.errorBox}>
@@ -83,6 +93,9 @@ export function SignupScreen() {
               placeholderTextColor="#9ca3af"
               value={name}
               onChangeText={setName}
+              autoComplete="name"
+              textContentType="name"
+              returnKeyType="next"
             />
           </View>
 
@@ -97,6 +110,9 @@ export function SignupScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoComplete="email"
+              textContentType="emailAddress"
+              returnKeyType="next"
             />
           </View>
 
@@ -110,6 +126,9 @@ export function SignupScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              autoComplete="password-new"
+              textContentType="newPassword"
+              returnKeyType="next"
             />
           </View>
 
@@ -123,10 +142,20 @@ export function SignupScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
+              autoComplete="password-new"
+              textContentType="newPassword"
+              returnKeyType="go"
+              onSubmitEditing={handleSignup}
             />
           </View>
 
-          <Pressable style={styles.btn} onPress={handleSignup} disabled={loading}>
+          <Pressable
+            style={[styles.btn, loading && styles.btnDisabled]}
+            onPress={handleSignup}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Create account"
+            accessibilityState={{ disabled: loading }}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create Account</Text>}
           </Pressable>
 
@@ -137,12 +166,14 @@ export function SignupScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#2563eb' },
+  keyboard: { flex: 1 },
   scroll: { flexGrow: 1, padding: 20, alignItems: 'center', justifyContent: 'center' },
   logoWrap: { alignItems: 'center', marginBottom: 20 },
   logoCircle: {
@@ -167,7 +198,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  cardTitle: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 18 },
+  cardTitle: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 8 },
+  cardSubtitle: { fontSize: 13, color: '#6b7280', lineHeight: 18, marginBottom: 14 },
   errorBox: {
     backgroundColor: '#fef2f2',
     borderWidth: 1,
@@ -197,7 +229,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
     marginBottom: 12,
+    minHeight: 48,
+    justifyContent: 'center',
   },
+  btnDisabled: { opacity: 0.85 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   linkText: {
     textAlign: 'center',

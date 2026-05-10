@@ -601,16 +601,19 @@ export function CaptureScreen({ navigation }: Props) {
 
       {/* Capture Card */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Capture Traffic Scene</Text>
+        <Text style={styles.sectionKicker}>Photos & video</Text>
+        <Text style={styles.cardTitle}>Scan a traffic scene</Text>
         <Text style={styles.cardDesc}>
-          Use your device camera or gallery for real Roboflow inference. Remote demo images are for offline
-          testing only.
+          Use your camera or gallery for real on-device analysis. Internet is required. Video is analyzed as about
+          one frame per second.
         </Text>
 
         <Pressable
           style={[styles.primaryBtn, interactionLocked && styles.disabledBtn]}
           disabled={interactionLocked}
-          onPress={handleDeviceCamera}>
+          onPress={handleDeviceCamera}
+          accessibilityRole="button"
+          accessibilityLabel="Open camera to take a photo">
           <Text style={styles.primaryBtnIcon}>📷</Text>
           <Text style={styles.primaryBtnText}>Take photo</Text>
         </Pressable>
@@ -618,51 +621,71 @@ export function CaptureScreen({ navigation }: Props) {
         <Pressable
           style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
           disabled={interactionLocked}
-          onPress={handleDeviceGallery}>
+          onPress={handleDeviceGallery}
+          accessibilityRole="button"
+          accessibilityLabel="Choose a photo from gallery">
           <Text style={styles.outlineBtnIcon}>🖼</Text>
-          <Text style={styles.outlineBtnText}>Choose from gallery</Text>
+          <Text style={styles.outlineBtnText}>Choose photo from gallery</Text>
         </Pressable>
 
         <Pressable
           style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
           disabled={interactionLocked}
-          onPress={handleChooseVideoForLiveScan}>
+          onPress={handleChooseVideoForLiveScan}
+          accessibilityRole="button"
+          accessibilityLabel="Choose a video file to scan">
           <Text style={styles.outlineBtnIcon}>🎬</Text>
-          <Text style={styles.outlineBtnText}>Choose video (MP4) for 1 FPS scan</Text>
+          <Text style={styles.outlineBtnText}>Choose video to scan (~1 frame per second)</Text>
         </Pressable>
 
+        <Text style={styles.sectionKicker}>Practice mode (offline demo)</Text>
+        <Text style={styles.cardDesc}>
+          Sample images from the internet with simulated results — useful when you have no network or want a quick
+          UI walkthrough. Does not call the real detector.
+        </Text>
         <Pressable
           style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
           disabled={interactionLocked}
-          onPress={() => runDetection(MOCK_IMAGES[Math.floor(Math.random() * MOCK_IMAGES.length)], 'upload')}>
+          onPress={() => runDetection(MOCK_IMAGES[Math.floor(Math.random() * MOCK_IMAGES.length)], 'upload')}
+          accessibilityRole="button"
+          accessibilityLabel="Try random demo image">
           <Text style={styles.outlineBtnIcon}>⬆</Text>
-          <Text style={styles.outlineBtnText}>Try demo (remote sample)</Text>
+          <Text style={styles.outlineBtnText}>Random demo image</Text>
         </Pressable>
 
         <Pressable
           style={[styles.textLinkBtn, interactionLocked && styles.disabledBtn]}
           disabled={interactionLocked}
-          onPress={() => setDemoScenesOpen(true)}>
+          onPress={() => setDemoScenesOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Pick a demo scene">
           <Text style={styles.textLinkBtnText}>Pick a demo scene…</Text>
         </Pressable>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Live Monitoring (1 FPS)</Text>
+        <Text style={styles.sectionKicker}>Continuous scan</Text>
+        <Text style={styles.cardTitle}>Live monitoring (~1 per second)</Text>
         <Text style={styles.cardDesc}>
-          Opens the device back camera and captures ~1 photo per second for Roboflow. MP4 scanning (gallery video)
-          uses extracted JPEGs with the same pipeline.
+          Uses the back camera: about one photo per second while you point at the road. Violations can be saved to the
+          queue automatically when the model finds them. Stop anytime with the button below or in full-screen mode.
         </Text>
         {!liveRunning ? (
           <Pressable
             style={[styles.primaryBtn, interactionLocked && styles.disabledBtn]}
             disabled={interactionLocked}
-            onPress={startLiveMonitoring}>
-            <Text style={styles.primaryBtnText}>Start Live Monitoring</Text>
+            onPress={startLiveMonitoring}
+            accessibilityRole="button"
+            accessibilityLabel="Start live monitoring with back camera">
+            <Text style={styles.primaryBtnText}>Start live monitoring</Text>
           </Pressable>
         ) : (
-          <Pressable style={styles.stopBtn} onPress={stopLiveMonitoring}>
-            <Text style={styles.stopBtnText}>Stop Live Monitoring</Text>
+          <Pressable
+            style={styles.stopBtn}
+            onPress={stopLiveMonitoring}
+            accessibilityRole="button"
+            accessibilityLabel="Stop live monitoring">
+            <Text style={styles.stopBtnText}>Stop live monitoring</Text>
           </Pressable>
         )}
         <Text style={styles.liveMeta}>Frames processed: {liveFrames}</Text>
@@ -673,10 +696,10 @@ export function CaptureScreen({ navigation }: Props) {
       {/* How it Works */}
       <View style={styles.howCard}>
         <Text style={styles.howTitle}>How it works</Text>
-        <Text style={styles.howItem}>• Capture, photo gallery, or MP4 clip (~1 FPS frame scan)</Text>
-        <Text style={styles.howItem}>• AI analyzes for violations automatically</Text>
-        <Text style={styles.howItem}>• Review detected violations and details</Text>
-        <Text style={styles.howItem}>• Save records for future reference</Text>
+        <Text style={styles.howItem}>• Take a photo, pick from gallery, or scan a video — or use live mode</Text>
+        <Text style={styles.howItem}>• The app checks the image for helmet, seatbelt, phone, and related cues</Text>
+        <Text style={styles.howItem}>• Review what was found before you save</Text>
+        <Text style={styles.howItem}>• Saved items appear under History and (when applicable) the candidate queue</Text>
       </View>
 
       {/* Demo remote scenes (mock inference) */}
@@ -685,7 +708,7 @@ export function CaptureScreen({ navigation }: Props) {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Demo scenes</Text>
             <Text style={styles.modalDesc}>
-              Uses remote stock photos with simulated detection — no Roboflow call.
+              Uses sample photos from the internet with fake detection results — no real analysis.
             </Text>
             {MOCK_IMAGES.map((uri, i) => (
               <Pressable key={uri} style={styles.sampleBtn} onPress={() => runDetection(uri, 'still')}>
@@ -704,8 +727,8 @@ export function CaptureScreen({ navigation }: Props) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <ActivityIndicator size="large" color="#2563eb" style={{ marginBottom: 14 }} />
-            <Text style={styles.modalTitle}>Analyzing image...</Text>
-            <Text style={styles.modalDesc}>Detecting traffic violations. Please wait.</Text>
+            <Text style={styles.modalTitle}>Analyzing…</Text>
+            <Text style={styles.modalDesc}>Sending your image for detection. This may take up to a minute.</Text>
             {activeSessionId ? <Text style={styles.sessionHint}>Session: {activeSessionId}</Text> : null}
           </View>
         </View>
@@ -728,7 +751,12 @@ export function CaptureScreen({ navigation }: Props) {
         onRequestClose={stopLiveMonitoring}>
         <SafeAreaView style={styles.liveCameraRoot} edges={['top', 'left', 'right']}>
           <View style={styles.liveCameraHeader}>
-            <Pressable style={styles.liveCameraStopBtn} onPress={stopLiveMonitoring}>
+            <Pressable
+              style={styles.liveCameraStopBtn}
+              onPress={stopLiveMonitoring}
+              accessibilityRole="button"
+              accessibilityLabel="Stop camera"
+              hitSlop={8}>
               <Text style={styles.liveCameraStopTxt}>Stop</Text>
             </Pressable>
             {activeSessionId ? (
@@ -737,7 +765,7 @@ export function CaptureScreen({ navigation }: Props) {
               </Text>
             ) : null}
           </View>
-          <Text style={styles.liveCameraHint}>~1 FPS · Point at traffic scene</Text>
+          <Text style={styles.liveCameraHint}>About one photo per second · Point at the scene</Text>
           {cameraDevice == null ? (
             <ActivityIndicator size="large" color="#fff" style={{ marginTop: 24 }} />
           ) : (
@@ -821,11 +849,24 @@ function DetectionResult({ imageUri, result, onSave, onRetake }: DetectionResult
         )}
       </View>
 
-      <Pressable style={styles.primaryBtn} onPress={onSave}>
-        <Text style={styles.primaryBtnText}>Save Record</Text>
+      <Text style={styles.saveHint}>
+        {hasViolations
+          ? 'Save adds this to your history and may upload evidence for the officer queue (if you used scan or live mode).'
+          : 'No violation was found for this image. Saving is only needed when you want to keep a clear result in history.'}
+      </Text>
+      <Pressable
+        style={styles.primaryBtn}
+        onPress={onSave}
+        accessibilityRole="button"
+        accessibilityLabel="Save to history">
+        <Text style={styles.primaryBtnText}>Save to history</Text>
       </Pressable>
-      <Pressable style={[styles.outlineBtn, { marginBottom: 24 }]} onPress={onRetake}>
-        <Text style={styles.outlineBtnText}>Retake Photo</Text>
+      <Pressable
+        style={[styles.outlineBtn, { marginBottom: 24 }]}
+        onPress={onRetake}
+        accessibilityRole="button"
+        accessibilityLabel="Discard and scan again">
+        <Text style={styles.outlineBtnText}>Scan again</Text>
       </Pressable>
     </ScrollView>
   );
@@ -855,6 +896,14 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     gap: 12,
   },
+  sectionKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563eb',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
   cardDesc: { fontSize: 13, color: '#6b7280', lineHeight: 20 },
   primaryBtn: {
@@ -865,6 +914,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 48,
   },
   primaryBtnIcon: { fontSize: 18 },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -877,6 +927,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 48,
   },
   outlineBtnIcon: { fontSize: 18, color: '#2563eb' },
   outlineBtnText: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
@@ -890,6 +941,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   stopBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   liveMeta: { fontSize: 12, color: '#4b5563' },
@@ -955,6 +1008,13 @@ const styles = StyleSheet.create({
   detailIcon: { fontSize: 14 },
   detailLabel: { fontSize: 13, color: '#6b7280' },
   detailValue: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  saveHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 8,
+  },
   liveCameraRoot: { flex: 1, backgroundColor: '#000' },
   liveCameraHeader: {
     flexDirection: 'row',

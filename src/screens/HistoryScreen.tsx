@@ -7,17 +7,30 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useApp } from '../context/AppContext';
+import type { BottomTabParamList } from '../navigation/BottomTabNavigator';
 
 export function HistoryScreen() {
   const { records, deleteRecord } = useApp();
+  const tabNav = useNavigation<BottomTabNavigationProp<BottomTabParamList, 'History'>>();
 
   if (records.length === 0) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyIcon}>📋</Text>
-        <Text style={styles.emptyTitle}>No Records Yet</Text>
-        <Text style={styles.emptyDesc}>Captured violations will appear here.</Text>
+        <Text style={styles.emptyTitle}>Nothing here yet</Text>
+        <Text style={styles.emptyDesc}>
+          When you scan a scene and save detections, they will show up in this list.
+        </Text>
+        <Pressable
+          style={styles.emptyCta}
+          onPress={() => tabNav.navigate('Capture')}
+          accessibilityRole="button"
+          accessibilityLabel="Go to scan tab">
+          <Text style={styles.emptyCtaText}>Go to Scan</Text>
+        </Pressable>
       </View>
     );
   }
@@ -92,7 +105,17 @@ const styles = StyleSheet.create({
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151', marginBottom: 6 },
-  emptyDesc: { fontSize: 13, color: '#9ca3af', textAlign: 'center' },
+  emptyDesc: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 20, maxWidth: 280 },
+  emptyCta: {
+    marginTop: 20,
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 10,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  emptyCtaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   listTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
   card: {
     backgroundColor: '#fff',
