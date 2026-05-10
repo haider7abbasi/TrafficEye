@@ -32,39 +32,8 @@ import {
   registerCandidateObservation,
 } from '../services/dedupGate';
 
-const POSSIBLE_VIOLATIONS = [
-  'Red Light Violation',
-  'Speed Limit Exceeded',
-  'Wrong Lane Usage',
-  'No Helmet',
-  'Illegal Parking',
-  'Stop Sign Violation',
-  'Using Phone While Driving',
-  'Not Wearing Seatbelt',
-];
-
-const MOCK_IMAGES = [
-  'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=900',
-  'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=900',
-  'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=900',
-];
-
 function isLocalImageUri(uri: string): boolean {
   return uri.startsWith('file://') || uri.startsWith('content://') || /^[a-zA-Z]:\\/.test(uri) || uri.startsWith('/');
-}
-
-function buildMockResult(imageUri: string): Omit<ViolationRecord, 'id' | 'timestamp'> {
-  const count = Math.random() > 0.3 ? Math.floor(Math.random() * 3) + 1 : 0;
-  const chosen = Array.from({ length: count }, () => {
-    return POSSIBLE_VIOLATIONS[Math.floor(Math.random() * POSSIBLE_VIOLATIONS.length)];
-  });
-  return {
-    imageUri,
-    violations: [...new Set(chosen)],
-    confidence: Math.floor(Math.random() * 30) + 70,
-    location: 'Main Street & 5th Avenue',
-    vehicleNumber: count ? `ABC ${Math.floor(1000 + Math.random() * 9000)}` : undefined,
-  };
 }
 
 type Props = {
@@ -74,7 +43,6 @@ type Props = {
 type PendingInference = {
   specViolationIds: SpecViolationId[];
   platePrediction: RoboflowPrediction | null;
-  usedLiveInference: boolean;
 };
 
 function visionPhotoPathToUri(path: string): string {
@@ -91,7 +59,6 @@ export function CaptureScreen({ navigation }: Props) {
   const liveSessionIdRef = useRef<string | null>(null);
   const liveSamplerStartedRef = useRef(false);
 
-  const [demoScenesOpen, setDemoScenesOpen] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingEvidenceContentType, setPendingEvidenceContentType] = useState<string | undefined>(undefined);
@@ -133,7 +100,14 @@ export function CaptureScreen({ navigation }: Props) {
       Alert.alert('Live monitoring active', 'Stop live monitoring before running single-image detection.');
       return;
     }
-    setDemoScenesOpen(false);
+    if (!isLocalImageUri(imageUri)) {
+      Alert.alert(
+        'Local image required',
+        'Analysis uses your hosted Roboflow models on device photos only. Use Take photo or Choose from gallery.',
+      );
+      return;
+    }
+
     setDetecting(true);
     setPendingImage(imageUri);
     setPendingEvidenceContentType(mediaHint?.mimeType);
@@ -143,18 +117,6 @@ export function CaptureScreen({ navigation }: Props) {
     } catch (e) {
       console.warn('[Intake session]', e);
       setActiveSessionId(null);
-    }
-    if (!isLocalImageUri(imageUri)) {
-      setTimeout(() => {
-        setPendingResult(buildMockResult(imageUri));
-        setPendingInference({
-          specViolationIds: [],
-          platePrediction: null,
-          usedLiveInference: false,
-        });
-        setDetecting(false);
-      }, 1200);
-      return;
     }
 
     try {
@@ -174,18 +136,16 @@ export function CaptureScreen({ navigation }: Props) {
       setPendingInference({
         specViolationIds: result.specViolationIds,
         platePrediction: result.platePrediction,
-        usedLiveInference: true,
       });
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
       console.warn('[Capture inference]', message);
-      Alert.alert('Inference fallback', 'Using demo-mode simulation for this capture.');
-      setPendingResult(buildMockResult(imageUri));
-      setPendingInference({
-        specViolationIds: [],
-        platePrediction: null,
-        usedLiveInference: false,
-      });
+      Alert.alert('Detection failed', message);
+      setPendingImage(null);
+      setPendingEvidenceContentType(undefined);
+      setPendingResult(null);
+      setPendingInference(null);
+      setActiveSessionId(null);
     } finally {
       setDetecting(false);
     }
@@ -245,7 +205,7 @@ export function CaptureScreen({ navigation }: Props) {
         : undefined;
 
       // Candidate creation for live/local inference path with dedup create/merge decision.
-      if (pendingInference?.usedLiveInference && pendingInference.specViolationIds.length > 0) {
+      if (pendingInference && pendingInference.specViolationIds.length > 0) {
         const dedup = evaluateDedupGate({
           sessionId: activeSessionId ?? undefined,
           violationTypes: pendingInference.specViolationIds,
@@ -333,19 +293,26 @@ export function CaptureScreen({ navigation }: Props) {
   ) => {
     const locationLabel = opts?.frameSource === 'video' ? 'Video clip' : 'Live monitor';
     const local = isLocalImageUri(imageUri);
+    if (!local) {
+      console.warn('[Live frame] Skipping non-local URI (unexpected)', imageUri);
+      setLiveLastInfo(`Frame ${frameId}: local image required for Roboflow`);
+      return;
+    }
+
     let specIds: SpecViolationId[] = [];
     let violationLabels: string[] = [];
     let platePrediction: RoboflowPrediction | null = null;
 
-    if (local) {
+    try {
       const result = await analyzeLocalImageForViolations(imageUri);
       specIds = result.specViolationIds;
       violationLabels = result.violationLabels;
       platePrediction = result.platePrediction;
-    } else {
-      const mock = buildMockResult(imageUri);
-      violationLabels = mock.violations;
-      specIds = [];
+    } catch (e) {
+      const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
+      console.warn('[Live frame inference]', message);
+      setLiveLastInfo(`Frame ${frameId}: detection error`);
+      return;
     }
 
     if (violationLabels.length === 0) {
@@ -362,13 +329,13 @@ export function CaptureScreen({ navigation }: Props) {
       return;
     }
 
-    if (local && specIds.length > 0) {
+    if (specIds.length > 0) {
       const candidateId =
         gate.decision === 'merge' && gate.existingCandidateId
           ? gate.existingCandidateId
           : `cand-live-${Date.now()}-${frameId}`;
       const uploaded = await uploadCandidateEvidence(candidateId, imageUri, {
-        contentType: local ? 'image/jpeg' : undefined,
+        contentType: 'image/jpeg',
       });
       await createCandidate({
         candidateId,
@@ -605,8 +572,8 @@ export function CaptureScreen({ navigation }: Props) {
         <Text style={styles.sectionKicker}>Photos & video</Text>
         <Text style={styles.cardTitle}>Scan a traffic scene</Text>
         <Text style={styles.cardDesc}>
-          Use your camera or gallery for real on-device analysis. Internet is required. Video is analyzed as about
-          one frame per second.
+          Use your camera or gallery — each image is sent to your hosted Roboflow detection models. Internet is
+          required. Video is analyzed as about one frame per second.
         </Text>
 
         <Pressable
@@ -637,30 +604,6 @@ export function CaptureScreen({ navigation }: Props) {
           accessibilityLabel="Choose a video file to scan">
           <Text style={styles.outlineBtnIcon}>🎬</Text>
           <Text style={styles.outlineBtnText}>Choose video to scan (~1 frame per second)</Text>
-        </Pressable>
-
-        <Text style={styles.sectionKicker}>Practice mode (offline demo)</Text>
-        <Text style={styles.cardDesc}>
-          Sample images from the internet with simulated results — useful when you have no network or want a quick
-          UI walkthrough. Does not call the real detector.
-        </Text>
-        <Pressable
-          style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
-          disabled={interactionLocked}
-          onPress={() => runDetection(MOCK_IMAGES[Math.floor(Math.random() * MOCK_IMAGES.length)], 'upload')}
-          accessibilityRole="button"
-          accessibilityLabel="Try random demo image">
-          <Text style={styles.outlineBtnIcon}>⬆</Text>
-          <Text style={styles.outlineBtnText}>Random demo image</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.textLinkBtn, interactionLocked && styles.disabledBtn]}
-          disabled={interactionLocked}
-          onPress={() => setDemoScenesOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Pick a demo scene">
-          <Text style={styles.textLinkBtnText}>Pick a demo scene…</Text>
         </Pressable>
       </View>
 
@@ -721,32 +664,13 @@ export function CaptureScreen({ navigation }: Props) {
       <View style={styles.howCard}>
         <Text style={styles.howTitle}>How it works</Text>
         <Text style={styles.howItem}>
-          • Take a photo, pick from gallery, or scan a video — or live mode (back camera only)
+          • Take a photo, pick from gallery, scan a video, or live mode (back camera only) — all use Roboflow hosted
+          inference on local frames
         </Text>
-        <Text style={styles.howItem}>• The app checks the image for helmet, seatbelt, phone, and related cues</Text>
+        <Text style={styles.howItem}>• Models check each frame for helmet, seatbelt, phone, and plate cues</Text>
         <Text style={styles.howItem}>• Review what was found before you save</Text>
         <Text style={styles.howItem}>• Saved items appear under History and (when applicable) the candidate queue</Text>
       </View>
-
-      {/* Demo remote scenes (mock inference) */}
-      <Modal visible={demoScenesOpen} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Demo scenes</Text>
-            <Text style={styles.modalDesc}>
-              Uses sample photos from the internet with fake detection results — no real analysis.
-            </Text>
-            {MOCK_IMAGES.map((uri, i) => (
-              <Pressable key={uri} style={styles.sampleBtn} onPress={() => runDetection(uri, 'still')}>
-                <Text style={styles.sampleBtnText}>Scene {i + 1}</Text>
-              </Pressable>
-            ))}
-            <Pressable style={styles.cancelBtn} onPress={() => setDemoScenesOpen(false)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
       {/* Detecting Modal */}
       <Modal visible={detecting} animationType="fade" transparent>
@@ -754,7 +678,9 @@ export function CaptureScreen({ navigation }: Props) {
           <View style={styles.modalCard}>
             <ActivityIndicator size="large" color="#2563eb" style={{ marginBottom: 14 }} />
             <Text style={styles.modalTitle}>Analyzing…</Text>
-            <Text style={styles.modalDesc}>Sending your image for detection. This may take up to a minute.</Text>
+            <Text style={styles.modalDesc}>
+              Sending your image to Roboflow for detection. This may take up to a minute.
+            </Text>
             {activeSessionId ? <Text style={styles.sessionHint}>Session: {activeSessionId}</Text> : null}
           </View>
         </View>
@@ -884,7 +810,7 @@ function DetectionResult({ imageUri, result, onSave, onRetake }: DetectionResult
 
       <Text style={styles.saveHint}>
         {hasViolations
-          ? 'Save adds this to your history and may upload evidence for the officer queue (if you used scan or live mode).'
+          ? 'Save adds this to your history and may upload evidence for the officer queue (Roboflow results from scan or live mode).'
           : 'No violation was found for this image. Saving is only needed when you want to keep a clear result in history.'}
       </Text>
       <Pressable
@@ -964,11 +890,6 @@ const styles = StyleSheet.create({
   },
   outlineBtnIcon: { fontSize: 18, color: '#2563eb' },
   outlineBtnText: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
-  textLinkBtn: {
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  textLinkBtnText: { color: '#4b5563', fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
   stopBtn: {
     backgroundColor: '#dc2626',
     borderRadius: 10,
@@ -1032,22 +953,6 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', textAlign: 'center' },
   modalDesc: { fontSize: 13, color: '#6b7280', textAlign: 'center' },
   sessionHint: { fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 2 },
-  sampleBtn: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  sampleBtnText: { color: '#374151', fontWeight: '500' },
-  cancelBtn: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  cancelBtnText: { color: '#6b7280', fontWeight: '500' },
   detectionImage: { width: '100%', height: 220 },
   resultHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   resultIcon: { fontSize: 26 },

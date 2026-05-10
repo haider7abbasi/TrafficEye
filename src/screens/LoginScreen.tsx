@@ -148,9 +148,9 @@ export function LoginScreen() {
             </Text>
           </Pressable>
 
-          <View style={styles.demoBox}>
-            <Text style={styles.demoTitle}>First time here?</Text>
-            <Text style={styles.demoHint}>
+          <View style={styles.helpBox}>
+            <Text style={styles.helpTitle}>First time here?</Text>
+            <Text style={styles.helpHint}>
               Use the email and password your administrator gave you, or tap Create account if self-sign-up is
               enabled for your organization.
             </Text>
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     color: '#1d4ed8',
     fontWeight: '700',
   },
-  demoBox: {
+  helpBox: {
     backgroundColor: '#eff6ff',
     borderRadius: 10,
     padding: 14,
@@ -269,6 +269,6 @@ const styles = StyleSheet.create({
     borderColor: '#bfdbfe',
     gap: 4,
   },
-  demoTitle: { fontSize: 11, fontWeight: '700', color: '#1e40af', marginBottom: 4 },
-  demoHint: { fontSize: 11, color: '#1d4ed8', lineHeight: 16 },
+  helpTitle: { fontSize: 11, fontWeight: '700', color: '#1e40af', marginBottom: 4 },
+  helpHint: { fontSize: 11, color: '#1d4ed8', lineHeight: 16 },
 });
