@@ -85,6 +85,7 @@ function visionPhotoPathToUri(path: string): string {
 export function CaptureScreen({ navigation }: Props) {
   const { records, addRecord, createIntakeSession, uploadCandidateEvidence, createCandidate } = useApp();
   const { hasPermission: hasCameraPermission, requestPermission: requestCameraPermission } = useCameraPermission();
+  /** Live monitoring: rear camera only (road-facing). Still capture via image picker can use the system camera UI. */
   const cameraDevice = useCameraDevice('back');
   const cameraRef = useRef<Camera>(null);
   const liveSessionIdRef = useRef<string | null>(null);
@@ -666,9 +667,21 @@ export function CaptureScreen({ navigation }: Props) {
       <View style={styles.card}>
         <Text style={styles.sectionKicker}>Continuous scan</Text>
         <Text style={styles.cardTitle}>Live monitoring (~1 per second)</Text>
+        <View style={styles.livePolicyBanner}>
+          <Text style={styles.livePolicyBannerIcon} importantForAccessibility="no">
+            📷
+          </Text>
+          <View style={styles.livePolicyBannerTextCol}>
+            <Text style={styles.livePolicyBannerTitle}>Back camera only</Text>
+            <Text style={styles.livePolicyBannerSub}>
+              Live mode is locked to the rear camera for road-facing traffic. Use “Take photo” if you need the system
+              camera app (e.g. front camera).
+            </Text>
+          </View>
+        </View>
         <Text style={styles.cardDesc}>
-          Uses the back camera: about one photo per second while you point at the road. Violations can be saved to the
-          queue automatically when the model finds them. Stop anytime with the button below or in full-screen mode.
+          About one photo per second while you hold the phone toward the scene. When the model finds violations, they
+          can be queued automatically. Stop from here or in full-screen.
         </Text>
         {!liveRunning ? (
           <Pressable
@@ -676,8 +689,8 @@ export function CaptureScreen({ navigation }: Props) {
             disabled={interactionLocked}
             onPress={startLiveMonitoring}
             accessibilityRole="button"
-            accessibilityLabel="Start live monitoring with back camera">
-            <Text style={styles.primaryBtnText}>Start live monitoring</Text>
+            accessibilityLabel="Start live monitoring with back camera only">
+            <Text style={styles.primaryBtnText}>Start live (back camera)</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -688,15 +701,28 @@ export function CaptureScreen({ navigation }: Props) {
             <Text style={styles.stopBtnText}>Stop live monitoring</Text>
           </Pressable>
         )}
-        <Text style={styles.liveMeta}>Frames processed: {liveFrames}</Text>
-        <Text style={styles.liveMeta}>Violations saved: {liveViolations}</Text>
-        <Text style={styles.liveMeta}>Status: {liveLastInfo}</Text>
+        <View style={styles.liveStatsCard}>
+          <Text style={styles.liveStatsTitle}>Session</Text>
+          <View style={styles.liveStatsRow}>
+            <Text style={styles.liveStatLabel}>Frames</Text>
+            <Text style={styles.liveStatValue}>{liveFrames}</Text>
+          </View>
+          <View style={styles.liveStatsRow}>
+            <Text style={styles.liveStatLabel}>Violations saved</Text>
+            <Text style={styles.liveStatValue}>{liveViolations}</Text>
+          </View>
+          <Text style={styles.liveStatStatus} numberOfLines={2}>
+            {liveLastInfo}
+          </Text>
+        </View>
       </View>
 
       {/* How it Works */}
       <View style={styles.howCard}>
         <Text style={styles.howTitle}>How it works</Text>
-        <Text style={styles.howItem}>• Take a photo, pick from gallery, or scan a video — or use live mode</Text>
+        <Text style={styles.howItem}>
+          • Take a photo, pick from gallery, or scan a video — or live mode (back camera only)
+        </Text>
         <Text style={styles.howItem}>• The app checks the image for helmet, seatbelt, phone, and related cues</Text>
         <Text style={styles.howItem}>• Review what was found before you save</Text>
         <Text style={styles.howItem}>• Saved items appear under History and (when applicable) the candidate queue</Text>
@@ -759,13 +785,20 @@ export function CaptureScreen({ navigation }: Props) {
               hitSlop={8}>
               <Text style={styles.liveCameraStopTxt}>Stop</Text>
             </Pressable>
-            {activeSessionId ? (
-              <Text style={styles.liveCameraSessionTxt} numberOfLines={1}>
-                Session: {activeSessionId}
-              </Text>
-            ) : null}
+            <View style={styles.liveCameraHeaderCenter}>
+              <View style={styles.liveCameraChipRow}>
+                <Text style={styles.liveCameraChip}>Back camera</Text>
+                <Text style={styles.liveCameraChipMuted}>~1 photo/s</Text>
+              </View>
+              {activeSessionId ? (
+                <Text style={styles.liveCameraSessionTxt} numberOfLines={1}>
+                  {activeSessionId}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.liveCameraHeaderSpacer} />
           </View>
-          <Text style={styles.liveCameraHint}>About one photo per second · Point at the scene</Text>
+          <Text style={styles.liveCameraHint}>Hold the phone so the rear camera faces the road · One capture per second</Text>
           {cameraDevice == null ? (
             <ActivityIndicator size="large" color="#fff" style={{ marginTop: 24 }} />
           ) : (
@@ -945,7 +978,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stopBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  liveMeta: { fontSize: 12, color: '#4b5563' },
+  livePolicyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  livePolicyBannerIcon: { fontSize: 22, marginTop: 2 },
+  livePolicyBannerTextCol: { flex: 1, gap: 4 },
+  livePolicyBannerTitle: { fontSize: 14, fontWeight: '700', color: '#1e3a8a' },
+  livePolicyBannerSub: { fontSize: 12, color: '#1e40af', lineHeight: 17 },
+  liveStatsCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 8,
+  },
+  liveStatsTitle: { fontSize: 11, fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 },
+  liveStatsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  liveStatLabel: { fontSize: 13, color: '#6b7280' },
+  liveStatValue: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  liveStatStatus: { fontSize: 12, color: '#4b5560', lineHeight: 17, marginTop: 2 },
   disabledBtn: { opacity: 0.7 },
   howCard: {
     backgroundColor: '#eff6ff',
@@ -1018,20 +1077,45 @@ const styles = StyleSheet.create({
   liveCameraRoot: { flex: 1, backgroundColor: '#000' },
   liveCameraHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingBottom: 8,
-    gap: 12,
+    gap: 8,
+  },
+  liveCameraHeaderCenter: { flex: 1, alignItems: 'center', minWidth: 0 },
+  liveCameraHeaderSpacer: { width: 72 },
+  liveCameraChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
+  liveCameraChip: {
+    backgroundColor: 'rgba(37, 99, 235, 0.35)',
+    color: '#e0e7ff',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  liveCameraChipMuted: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    color: '#d1d5db',
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   liveCameraStopBtn: {
     backgroundColor: '#dc2626',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
+    minWidth: 72,
+    alignItems: 'center',
   },
   liveCameraStopTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  liveCameraSessionTxt: { flex: 1, color: '#9ca3af', fontSize: 11 },
-  liveCameraHint: { color: '#e5e7eb', textAlign: 'center', fontSize: 13, paddingHorizontal: 16, marginBottom: 8 },
+  liveCameraSessionTxt: { color: '#6b7280', fontSize: 10, marginTop: 6, textAlign: 'center' },
+  liveCameraHint: { color: '#e5e7eb', textAlign: 'center', fontSize: 13, paddingHorizontal: 16, marginBottom: 8, lineHeight: 18 },
   liveCameraPreview: { flex: 1, width: '100%' },
 });
