@@ -1,0 +1,68 @@
+rules_version = '2';
+// Deny-by-default: only the path patterns below are allowed. Mirrors Firestore intent:
+// confirming / related officer (approved) or admin; size + content-type limits on writes.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return userData().role;
+    }
+
+    function isAdmin() {
+      return signedIn() && userRole() == 'admin';
+    }
+
+    function isApprovedOfficer() {
+      return signedIn() && userRole() == 'officer' && userData().approved == true;
+    }
+
+    function canAccessOfficerPrefix(officerId) {
+      return isAdmin() || (signedIn() && request.auth.uid == officerId && isApprovedOfficer());
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function underMegabytes(n) {
+      return request.resource.size < n * 1024 * 1024;
+    }
+
+    match /candidates/{officerId}/{allPaths=**} {
+      allow read: if canAccessOfficerPrefix(officerId);
+      allow write: if canAccessOfficerPrefix(officerId)
+        && underMegabytes(20)
+        && isImage();
+      allow delete: if canAccessOfficerPrefix(officerId);
+    }
+
+    match /challans/{officerId}/{allPaths=**} {
+      allow read: if canAccessOfficerPrefix(officerId);
+      allow write: if canAccessOfficerPrefix(officerId)
+        && underMegabytes(25)
+        && (isImage() || isPdf());
+      allow delete: if isAdmin();
+    }
+
+    match /sessions/{officerId}/{sessionId}/frames/{fileName} {
+      allow read: if canAccessOfficerPrefix(officerId);
+      allow write: if signedIn()
+        && request.auth.uid == officerId
+        && isApprovedOfficer()
+        && underMegabytes(10)
+        && isImage();
+      allow delete: if canAccessOfficerPrefix(officerId);
+    }
+  }
+}

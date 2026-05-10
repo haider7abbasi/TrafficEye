@@ -1,0 +1,112 @@
+rules_version = '2';
+// Deny-by-default: only collection paths defined below are accessible. Add new paths here
+// incrementally when features ship (see DETAILED_IMPLEMENTATION_PLAN.md §5).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return signedIn() && userDoc().role == 'admin';
+    }
+
+    function isApprovedOfficer() {
+      return signedIn()
+        && userDoc().role == 'officer'
+        && userDoc().approved == true;
+    }
+
+    function ownsOfficerField(data) {
+      return data.officerId == request.auth.uid;
+    }
+
+    function canAccessOfficerRecord(data) {
+      return isAdmin() || (signedIn() && ownsOfficerField(data) && isApprovedOfficer());
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      // Self-registration (AppContext): officer + pending only — role / approval escalation is admin-only.
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'officer'
+        && request.resource.data.approved == false;
+      // Non-admin self-update: cannot change role or approved (only admin may promote / approve).
+      allow update: if signedIn() && (
+        isAdmin()
+        || (
+          request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.approved == resource.data.approved
+        )
+      );
+      allow delete: if isAdmin();
+      match /violations/{violationId} {
+        allow read, write: if signedIn() && (request.auth.uid == userId || isAdmin());
+      }
+    }
+
+    // Admin-editable in-app rules copy; all signed-in users may read.
+    match /traffic_rules/{ruleId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Intake session metadata (camera / upload / live).
+    match /intake_sessions/{sessionId} {
+      allow read: if signedIn() && (isAdmin() || ownsOfficerField(resource.data));
+      allow create: if signedIn() && (
+        isAdmin()
+        || (ownsOfficerField(request.resource.data) && isApprovedOfficer())
+      );
+      allow update: if signedIn() && (
+        isAdmin()
+        || (
+          ownsOfficerField(resource.data)
+          && isApprovedOfficer()
+          && request.resource.data.officerId == resource.data.officerId
+        )
+      );
+      allow delete: if signedIn() && (isAdmin() || ownsOfficerField(resource.data));
+    }
+
+    // Pre-confirmation queue (officer + admin per PROJECT_DOCUMENTATION §7 / §18).
+    match /candidates/{candidateId} {
+      allow read: if signedIn() && canAccessOfficerRecord(resource.data);
+      allow create: if signedIn() && (
+        isAdmin()
+        || (ownsOfficerField(request.resource.data) && isApprovedOfficer())
+      );
+      allow update: if signedIn() && (
+        isAdmin()
+        || (
+          canAccessOfficerRecord(resource.data)
+          && request.resource.data.officerId == resource.data.officerId
+        )
+      );
+      allow delete: if signedIn() && canAccessOfficerRecord(resource.data);
+    }
+
+    // Confirmed challans (officer sees own confirmations; admin sees all).
+    match /challans/{challanId} {
+      allow read: if signedIn() && canAccessOfficerRecord(resource.data);
+      allow create: if signedIn() && (
+        isAdmin()
+        || (ownsOfficerField(request.resource.data) && isApprovedOfficer())
+      );
+      allow update: if signedIn() && (
+        isAdmin()
+        || (
+          canAccessOfficerRecord(resource.data)
+          && request.resource.data.officerId == resource.data.officerId
+        )
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}
