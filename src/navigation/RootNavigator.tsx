@@ -1,5 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignupScreen } from '../screens/SignupScreen';
 import { PendingApprovalScreen } from '../screens/PendingApprovalScreen';
@@ -7,7 +8,8 @@ import { DrawerNavigator } from './DrawerNavigator';
 import { useApp } from '../context/AppContext';
 
 export type RootStackParamList = {
-  Login: undefined;
+  Welcome: undefined;
+  Login: { roleHint?: 'officer' | 'admin' } | undefined;
   Signup: undefined;
   PendingApproval: undefined;
   Main: undefined;
@@ -29,6 +31,7 @@ export function RootNavigator() {
         <Stack.Screen name="PendingApproval" component={PendingApprovalScreen} />
       ) : (
         <>
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
         </>

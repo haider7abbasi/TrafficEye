@@ -63,6 +63,15 @@ export function SignupScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Pressable
+          style={styles.backRow}
+          onPress={() => navigation.navigate('Welcome')}
+          accessibilityRole="button"
+          accessibilityLabel="Back to role selection">
+          <Text style={styles.backChevron}>‹</Text>
+          <Text style={styles.backText}>Choose role</Text>
+        </Pressable>
+
         <View style={styles.logoWrap}>
           <View style={styles.logoCircle}>
             <Text style={styles.logoIcon}>🛡️</Text>
@@ -159,7 +168,7 @@ export function SignupScreen() {
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Create Account</Text>}
           </Pressable>
 
-          <Pressable onPress={() => navigation.navigate('Login')} hitSlop={8}>
+          <Pressable onPress={() => navigation.navigate('Login', {})} hitSlop={8}>
             <Text style={styles.linkText}>
               Already have an account? <Text style={styles.linkStrong}>Sign In</Text>
             </Text>
@@ -175,6 +184,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#2563eb' },
   keyboard: { flex: 1 },
   scroll: { flexGrow: 1, padding: 20, alignItems: 'center', justifyContent: 'center' },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingRight: 12,
+    gap: 2,
+  },
+  backChevron: { color: '#e0e7ff', fontSize: 28, fontWeight: '300', marginTop: -2 },
+  backText: { color: '#e0e7ff', fontSize: 15, fontWeight: '600' },
   logoWrap: { alignItems: 'center', marginBottom: 20 },
   logoCircle: {
     width: 80,

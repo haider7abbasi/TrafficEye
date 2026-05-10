@@ -12,16 +12,19 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { mapAuthError } from '../utils/authErrors';
 import { RootStackParamList } from '../navigation/RootNavigator';
 
 type LoginNavigation = NativeStackNavigationProp<RootStackParamList, 'Login'>;
+type LoginRoute = RouteProp<RootStackParamList, 'Login'>;
 
 export function LoginScreen() {
   const navigation = useNavigation<LoginNavigation>();
+  const route = useRoute<LoginRoute>();
+  const roleHint = route.params?.roleHint;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -52,6 +55,15 @@ export function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Pressable
+          style={styles.backRow}
+          onPress={() => navigation.navigate('Welcome')}
+          accessibilityRole="button"
+          accessibilityLabel="Back to role selection">
+          <Text style={styles.backChevron}>‹</Text>
+          <Text style={styles.backText}>Choose role</Text>
+        </Pressable>
+
         {/* Logo */}
         <View style={styles.logoWrap}>
           <View style={styles.logoCircle}>
@@ -64,6 +76,17 @@ export function LoginScreen() {
         {/* Card */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign In</Text>
+          {roleHint ? (
+            <View
+              style={[styles.roleBanner, roleHint === 'admin' ? styles.roleBannerAdmin : styles.roleBannerOfficer]}>
+              <Text style={styles.roleBannerText}>
+                {roleHint === 'admin' ? 'Administrator portal' : 'Officer portal'}
+              </Text>
+              <Text style={styles.roleBannerHint}>
+                Use the account your organization provided. Your role is confirmed after sign-in.
+              </Text>
+            </View>
+          ) : null}
 
           {!!error && (
             <View style={styles.errorBox}>
@@ -121,7 +144,7 @@ export function LoginScreen() {
 
           <Pressable onPress={() => navigation.navigate('Signup')} hitSlop={8}>
             <Text style={styles.linkText}>
-              New user? <Text style={styles.linkStrong}>Create account</Text>
+              Need an account? <Text style={styles.linkStrong}>Create account</Text>
             </Text>
           </Pressable>
 
@@ -143,6 +166,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#2563eb' },
   keyboard: { flex: 1 },
   scroll: { flexGrow: 1, padding: 20, alignItems: 'center', justifyContent: 'center' },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 6,
+    paddingRight: 12,
+    gap: 2,
+  },
+  backChevron: { color: '#e0e7ff', fontSize: 28, fontWeight: '300', marginTop: -2 },
+  backText: { color: '#e0e7ff', fontSize: 15, fontWeight: '600' },
   logoWrap: { alignItems: 'center', marginBottom: 32 },
   logoCircle: {
     width: 80,
@@ -167,6 +201,22 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   cardTitle: { fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 18 },
+  roleBanner: {
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  roleBannerOfficer: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#93c5fd',
+  },
+  roleBannerAdmin: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#94a3b8',
+  },
+  roleBannerText: { fontSize: 14, fontWeight: '800', color: '#0f172a', marginBottom: 4 },
+  roleBannerHint: { fontSize: 12, color: '#475569', lineHeight: 17 },
   errorBox: {
     backgroundColor: '#fef2f2',
     borderWidth: 1,
