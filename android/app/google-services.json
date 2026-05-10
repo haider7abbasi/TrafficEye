@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "810984275535",
+    "project_id": "traffic-eye-1c5e9",
+    "storage_bucket": "traffic-eye-1c5e9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:810984275535:android:88ade287e754bf2786b43a",
+        "android_client_info": {
+          "package_name": "com.trafficeye"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrYQDMFAkgnkv-Edx01S_g_LajjgXmPkE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

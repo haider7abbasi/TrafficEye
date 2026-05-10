@@ -1,0 +1,477 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from 'react';
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import type { UploadedStorageObject } from '../services/storageEvidence';
+import {
+  CANDIDATES_COLLECTION,
+  INTAKE_SESSIONS_COLLECTION,
+  USERS_COLLECTION,
+  VIOLATIONS_SUBCOLLECTION,
+} from '../config/collections';
+import { TRAFFICEYE_RULES_FREEZE_VERSION } from '../rules';
+import type { SpecViolationId } from '../rules/specViolationMapping';
+import { bootstrapFirebase } from '../config/bootstrapFirebase';
+import {
+  deleteStorageObject,
+  getStorageDownloadUrl,
+  uploadCandidateEvidenceImage,
+  uploadCandidatePlateCropImage,
+  uploadChallanPdfBase64,
+  uploadChallanPdfFile,
+  uploadSessionFrameImage,
+} from '../services/storageEvidence';
+import { waitForNativeFirebaseReady } from '../utils/waitForNativeFirebase';
+
+export type ViolationRecord = {
+  id: string;
+  imageUri: string;
+  violations: string[];
+  confidence: number;
+  location: string;
+  timestamp: string;
+  vehicleNumber?: string;
+};
+
+export type User = {
+  name: string;
+  email: string;
+  role: 'officer' | 'admin';
+  approved: boolean;
+  phone: string;
+  department: string;
+  location: string;
+  badgeNumber: string;
+};
+
+type AppContextType = {
+  user: User | null;
+  hasSession: boolean;
+  hasAccess: boolean;
+  authReady: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateUser: (data: Partial<User>) => Promise<void>;
+  records: ViolationRecord[];
+  addRecord: (record: ViolationRecord) => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
+  uploadCandidateEvidence: (
+    candidateId: string,
+    localUri: string,
+    options?: { contentType?: string },
+  ) => Promise<UploadedStorageObject>;
+  uploadCandidatePlateCrop: (candidateId: string, localUri: string) => Promise<UploadedStorageObject>;
+  uploadChallanPdf: (challanId: string, localUri: string) => Promise<UploadedStorageObject>;
+  uploadChallanPdfFromBase64: (challanId: string, pdfBase64: string) => Promise<UploadedStorageObject>;
+  uploadSessionFrame: (
+    sessionId: string,
+    frameId: string,
+    localUri: string,
+  ) => Promise<UploadedStorageObject>;
+  createCandidate: (input: {
+    candidateId: string;
+    sessionId?: string;
+    violationTypes: SpecViolationId[];
+    dedupDecision?: 'create' | 'merge' | 'suppress';
+    dedupSignature?: string;
+    evidenceImageRef?: string;
+    plateCropRef?: string;
+    plateBox?: { x: number; y: number; width: number; height: number; confidence: number };
+    locationText?: string;
+  }) => Promise<void>;
+  createIntakeSession: (mode: 'still' | 'upload' | 'video' | 'live') => Promise<string>;
+  getStorageUrl: (objectPath: string) => Promise<string>;
+  deleteStoragePath: (objectPath: string) => Promise<void>;
+};
+
+const AppContext = createContext<AppContextType | null>(null);
+
+function toIso(ts: FirebaseFirestoreTypes.Timestamp | Date | string | undefined): string {
+  if (!ts) {
+    return new Date().toISOString();
+  }
+  if (typeof ts === 'string') {
+    return ts;
+  }
+  if (ts instanceof Date) {
+    return ts.toISOString();
+  }
+  if (typeof (ts as FirebaseFirestoreTypes.Timestamp).toDate === 'function') {
+    return (ts as FirebaseFirestoreTypes.Timestamp).toDate().toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function mapViolationDoc(
+  docSnap: FirebaseFirestoreTypes.DocumentSnapshot,
+): ViolationRecord | null {
+  const data = docSnap.data();
+  if (!data) {
+    return null;
+  }
+  return {
+    id: docSnap.id,
+    imageUri: String(data.imageUri ?? ''),
+    violations: Array.isArray(data.violations) ? data.violations : [],
+    confidence: Number(data.confidence ?? 0),
+    location: String(data.location ?? ''),
+    timestamp: toIso(data.timestamp as FirebaseFirestoreTypes.Timestamp),
+    vehicleNumber: data.vehicleNumber != null ? String(data.vehicleNumber) : undefined,
+  };
+}
+
+function mapUserProfile(
+  data: FirebaseFirestoreTypes.DocumentData | undefined,
+  fbUser: FirebaseAuthTypes.User,
+): User {
+  const role: User['role'] = data?.role === 'admin' ? 'admin' : 'officer';
+  return {
+    name: String(data?.name ?? fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'Officer'),
+    email: String(data?.email ?? fbUser.email ?? ''),
+    role,
+    approved: role === 'admin' ? true : data?.approved === true,
+    phone: String(data?.phone ?? ''),
+    department: String(data?.department ?? 'Traffic Enforcement'),
+    location: String(data?.location ?? ''),
+    badgeNumber: String(data?.badgeNumber ?? ''),
+  };
+}
+
+async function ensureUserProfile(fbUser: FirebaseAuthTypes.User): Promise<User> {
+  const ref = firestore().collection(USERS_COLLECTION).doc(fbUser.uid);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    const profile: User = {
+      name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Officer',
+      email: fbUser.email || '',
+      role: 'officer',
+      approved: false,
+      phone: '',
+      department: 'Traffic Enforcement',
+      location: '',
+      badgeNumber: '',
+    };
+    await ref.set(profile);
+    return profile;
+  }
+  return mapUserProfile(snap.data(), fbUser);
+}
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [records, setRecords] = useState<ViolationRecord[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const hasSession = !!user;
+  const hasAccess = !!user && (user.role === 'admin' || user.approved);
+
+  useEffect(() => {
+    let unsubViolations: (() => void) | undefined;
+    let unsubAuth: (() => void) | undefined;
+    let cancelled = false;
+
+    waitForNativeFirebaseReady()
+      .then(() => {
+        if (cancelled) {
+          return;
+        }
+        bootstrapFirebase();
+        unsubAuth = auth().onAuthStateChanged(async fbUser => {
+          unsubViolations?.();
+          unsubViolations = undefined;
+
+          if (!fbUser) {
+            setUser(null);
+            setRecords([]);
+            setAuthReady(true);
+            return;
+          }
+
+          try {
+            const profile = await ensureUserProfile(fbUser);
+            setUser(profile);
+
+            const q = firestore()
+              .collection(USERS_COLLECTION)
+              .doc(fbUser.uid)
+              .collection(VIOLATIONS_SUBCOLLECTION)
+              .orderBy('timestamp', 'desc');
+
+            unsubViolations = q.onSnapshot(
+              snap => {
+                const list: ViolationRecord[] = [];
+                snap.forEach(d => {
+                  const v = mapViolationDoc(d);
+                  if (v) {
+                    list.push(v);
+                  }
+                });
+                setRecords(list);
+              },
+              err => {
+                console.warn('[Firestore violations]', err.message);
+              },
+            );
+          } catch (e) {
+            console.warn('[AppContext auth]', e);
+            setUser(null);
+            setRecords([]);
+          } finally {
+            setAuthReady(true);
+          }
+        });
+      })
+      .catch(e => {
+        console.warn('[Firebase]', e?.message ?? e);
+        if (!cancelled) {
+          setAuthReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      unsubViolations?.();
+      unsubAuth?.();
+    };
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    await auth().signInWithEmailAndPassword(email.trim().toLowerCase(), password);
+  }, []);
+
+  const register = useCallback(async (name: string, email: string, password: string) => {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cred = await auth().createUserWithEmailAndPassword(cleanEmail, password);
+    if (cleanName) {
+      await cred.user.updateProfile({ displayName: cleanName });
+    }
+    await firestore()
+      .collection(USERS_COLLECTION)
+      .doc(cred.user.uid)
+      .set(
+        {
+          name: cleanName || cleanEmail.split('@')[0] || 'Officer',
+          email: cleanEmail,
+          role: 'officer',
+          approved: false,
+          phone: '',
+          department: 'Traffic Enforcement',
+          location: '',
+          badgeNumber: '',
+        },
+        { merge: true },
+      );
+  }, []);
+
+  const logout = useCallback(async () => {
+    await auth().signOut();
+  }, []);
+
+  const updateUser = useCallback(async (data: Partial<User>) => {
+    const uid = auth().currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+    setUser(prev => (prev ? { ...prev, ...data } : prev));
+    const { email: _omitEmail, ...patch } = data;
+    if (Object.keys(patch).length > 0) {
+      await firestore().collection(USERS_COLLECTION).doc(uid).set(patch, { merge: true });
+    }
+  }, []);
+
+  const addRecord = useCallback(async (record: ViolationRecord) => {
+    const uid = auth().currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+    await firestore()
+      .collection(USERS_COLLECTION)
+      .doc(uid)
+      .collection(VIOLATIONS_SUBCOLLECTION)
+      .doc(record.id)
+      .set({
+        imageUri: record.imageUri,
+        violations: record.violations,
+        confidence: record.confidence,
+        location: record.location,
+        timestamp: firestore.Timestamp.fromDate(new Date(record.timestamp)),
+        vehicleNumber: record.vehicleNumber ?? null,
+      });
+  }, []);
+
+  const deleteRecord = useCallback(async (id: string) => {
+    const uid = auth().currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+    await firestore()
+      .collection(USERS_COLLECTION)
+      .doc(uid)
+      .collection(VIOLATIONS_SUBCOLLECTION)
+      .doc(id)
+      .delete();
+  }, []);
+
+  const uploadCandidateEvidence = useCallback(
+    async (candidateId: string, localUri: string, options?: { contentType?: string }) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to upload candidate evidence.');
+      }
+      return uploadCandidateEvidenceImage(uid, candidateId, localUri, options?.contentType);
+    },
+    [],
+  );
+
+  const uploadCandidatePlateCrop = useCallback(
+    async (candidateId: string, localUri: string) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to upload candidate plate crop.');
+      }
+      return uploadCandidatePlateCropImage(uid, candidateId, localUri);
+    },
+    [],
+  );
+
+  const uploadChallanPdf = useCallback(
+    async (challanId: string, localUri: string) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to upload challan PDF.');
+      }
+      return uploadChallanPdfFile(uid, challanId, localUri);
+    },
+    [],
+  );
+
+  const uploadSessionFrame = useCallback(
+    async (sessionId: string, frameId: string, localUri: string) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to upload session frame.');
+      }
+      return uploadSessionFrameImage(uid, sessionId, frameId, localUri);
+    },
+    [],
+  );
+
+  const uploadChallanPdfFromBase64 = useCallback(
+    async (challanId: string, pdfBase64: string) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to upload challan PDF.');
+      }
+      return uploadChallanPdfBase64(uid, challanId, pdfBase64);
+    },
+    [],
+  );
+
+  const createCandidate = useCallback(
+    async (input: {
+      candidateId: string;
+      sessionId?: string;
+      violationTypes: SpecViolationId[];
+      dedupDecision?: 'create' | 'merge' | 'suppress';
+      dedupSignature?: string;
+      evidenceImageRef?: string;
+      plateCropRef?: string;
+      plateBox?: { x: number; y: number; width: number; height: number; confidence: number };
+      locationText?: string;
+    }) => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to create candidate.');
+      }
+      const payload: Record<string, unknown> = {
+        officerId: uid,
+        sessionId: input.sessionId ?? null,
+        rulesFreezeVersion: TRAFFICEYE_RULES_FREEZE_VERSION,
+        violationTypes: input.violationTypes,
+        dedupDecision: input.dedupDecision ?? 'create',
+        dedupSignature: input.dedupSignature ?? null,
+        evidenceImageRef: input.evidenceImageRef ?? null,
+        plateCropRef: input.plateCropRef ?? null,
+        plateBox: input.plateBox ?? null,
+        locationText: input.locationText ?? null,
+        status: 'pending_review',
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      };
+      if (input.dedupDecision === 'merge') {
+        payload.mergedAt = firestore.FieldValue.serverTimestamp();
+        payload.mergeCount = firestore.FieldValue.increment(1);
+      } else {
+        payload.createdAt = firestore.FieldValue.serverTimestamp();
+      }
+      await firestore().collection(CANDIDATES_COLLECTION).doc(input.candidateId).set(payload, { merge: true });
+    },
+    [],
+  );
+
+  const createIntakeSession = useCallback(
+    async (mode: 'still' | 'upload' | 'video' | 'live') => {
+      const uid = auth().currentUser?.uid;
+      if (!uid) {
+        throw new Error('Must be authenticated to create intake session.');
+      }
+      const ref = firestore().collection(INTAKE_SESSIONS_COLLECTION).doc();
+      await ref.set({
+        officerId: uid,
+        mode,
+        startedAt: firestore.FieldValue.serverTimestamp(),
+      });
+      return ref.id;
+    },
+    [],
+  );
+
+  const getStorageUrl = useCallback(async (objectPath: string) => {
+    return getStorageDownloadUrl(objectPath);
+  }, []);
+
+  const deleteStoragePath = useCallback(async (objectPath: string) => {
+    await deleteStorageObject(objectPath);
+  }, []);
+
+  return (
+    <AppContext.Provider
+      value={{
+        user,
+        hasSession,
+        hasAccess,
+        authReady,
+        login,
+        register,
+        logout,
+        updateUser,
+        records,
+        addRecord,
+        deleteRecord,
+        uploadCandidateEvidence,
+        uploadCandidatePlateCrop,
+        uploadChallanPdf,
+        uploadChallanPdfFromBase64,
+        uploadSessionFrame,
+        createCandidate,
+        createIntakeSession,
+        getStorageUrl,
+        deleteStoragePath,
+      }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const ctx = useContext(AppContext);
+  if (!ctx) {
+    throw new Error('useApp must be used inside AppProvider');
+  }
+  return ctx;
+}

@@ -1,0 +1,51 @@
+TrafficEye — Firebase Android connection checklist
+==================================================
+
+Your Firebase Console already matches this repo:
+  Project ID:     traffic-eye-1c5e9
+  Package name: com.trafficeye
+  App ID:         1:810984275535:android:88ade287e754bf2786b43a
+
+Files in this project:
+  • android/app/google-services.json  (must stay in sync with Console → download if you change the app)
+  • android/app/build.gradle          (com.google.gms.google-services + firebase-bom)
+  • android/build.gradle              (classpath com.google.gms:google-services:4.4.4)
+
+1) Add SHA certificate fingerprints (your Console showed none)
+   Firebase Console → Project settings → Your apps → Traffic Eye (Android) → Add fingerprint.
+
+   Debug keystore (default React Native android/app/debug.keystore):
+
+   SHA-1:
+   5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+
+   SHA-256:
+   FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
+
+   After adding fingerprints, download a fresh google-services.json and replace android/app/google-services.json
+   (optional for Email/Password only, but recommended; required for Google Sign-In / Phone Auth).
+
+   Release builds: add SHA-1/SHA-256 of your release keystore the same way.
+
+2) Enable products in Firebase Console
+   • Authentication → Sign-in method → Email/Password → Enable
+   • Firestore → Create database → deploy rules + indexes from repo root (Firebase CLI):
+       firebase deploy --only firestore:rules,firestore:indexes
+     Files: firestore.rules, firestore.indexes.json (referenced by firebase.json).
+   • Storage → Get started → create default bucket (Blaze plan may be required)
+     Deploy rules from repo (paths candidates/, challans/, sessions/...):
+       firebase deploy --only storage
+     Rules file: storage.rules (referenced by firebase.json). The app includes
+     @react-native-firebase/storage in package.json; rebuild native app after npm install.
+
+3) iOS (only if you target iOS): from repo root run `cd ios && pod install && cd ..`
+   Current TrafficEye phase is Android-only; skip this step until iOS is in scope.
+
+4) Rebuild the app
+   cd android && gradlew clean && cd .. && npm run android
+
+5) Verify in Metro (dev)
+   Look for log: [Firebase] Default app connected: [DEFAULT] | projectId: traffic-eye-1c5e9
+
+To re-print debug SHA (PowerShell):
+  keytool -list -v -keystore android\app\debug.keystore -alias androiddebugkey -storepass android -keypass android
