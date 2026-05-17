@@ -4,10 +4,11 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  ScrollView,
+  Alert,
 } from 'react-native';
 import {
   createDrawerNavigator,
+  DrawerContentScrollView,
   DrawerContentComponentProps,
 } from '@react-navigation/drawer';
 import { BottomTabNavigator } from './BottomTabNavigator';
@@ -22,6 +23,26 @@ import { AllChallansScreen } from '../screens/AllChallansScreen';
 import { ManageRulesScreen } from '../screens/ManageRulesScreen';
 import { MyChallansScreen } from '../screens/MyChallansScreen';
 import { useApp } from '../context/AppContext';
+import {
+  BRAND_DRAWER_PRESS,
+  BRAND_HEADER_BG,
+  BRAND_HEADER_BG_DEEP,
+  BRAND_ON_PRIMARY_MUTED,
+  BRAND_ON_PRIMARY_SUBTLE,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+} from '../theme/brandColors';
+import {
+  BadgeCheck,
+  ChevronRight,
+  FolderOpen,
+  Info,
+  Menu,
+  Ruler,
+  Settings,
+  Wrench,
+} from 'lucide-react-native';
+import { getFocusedLeafRouteName } from './drawerNavUtils';
 
 export type DrawerParamList = {
   MainTabs: { screen?: string } | undefined;
@@ -39,48 +60,48 @@ export type DrawerParamList = {
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
 
-const OFFICER_MENU_ITEMS: {
+type DrawerIconProps = { size?: number; color?: string; strokeWidth?: number };
+
+type DrawerMenuItem = {
   key: keyof DrawerParamList;
   label: string;
-  icon: string;
+  Icon: React.ComponentType<DrawerIconProps>;
   params?: object;
-}[] = [
-  { key: 'MainTabs', label: 'Dashboard', icon: '🏠', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'Scan', icon: '📷', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'History', icon: '📋', params: { screen: 'History' } },
-  { key: 'CandidateQueue', label: 'Candidate Queue', icon: '🧾' },
-  { key: 'MyChallans', label: 'My Challans', icon: '🗂️' },
-  { key: 'Analytics', label: 'Analytics', icon: '📊' },
-  { key: 'Profile', label: 'Profile', icon: '👤' },
-  { key: 'Settings', label: 'Settings', icon: '⚙️' },
-  { key: 'DetectionRules', label: 'Detection rules', icon: '📐' },
-  { key: 'About', label: 'About', icon: 'ℹ️' },
+};
+
+const OFFICER_MENU_ITEMS: DrawerMenuItem[] = [
+  { key: 'MyChallans', label: 'My challans', Icon: FolderOpen },
+  { key: 'Settings', label: 'Settings', Icon: Settings },
+  { key: 'DetectionRules', label: 'Detection rules', Icon: Ruler },
+  { key: 'About', label: 'About', Icon: Info },
 ];
 
-const ADMIN_MENU_ITEMS: {
-  key: keyof DrawerParamList;
-  label: string;
-  icon: string;
-  params?: object;
-}[] = [
-  { key: 'MainTabs', label: 'Dashboard', icon: '🏠', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'Scan', icon: '📷', params: { screen: 'Capture' } },
-  { key: 'MainTabs', label: 'History', icon: '📋', params: { screen: 'History' } },
-  { key: 'MyChallans', label: 'My Challans', icon: '🗂️' },
-  { key: 'AllChallans', label: 'All Challans', icon: '📚' },
-  { key: 'ManageRules', label: 'Manage Rules', icon: '🛠️' },
-  { key: 'ApproveOfficers', label: 'Approve Officers', icon: '✅' },
-  { key: 'Analytics', label: 'Analytics', icon: '📊' },
-  { key: 'Profile', label: 'Profile', icon: '👤' },
-  { key: 'Settings', label: 'Settings', icon: '⚙️' },
-  { key: 'DetectionRules', label: 'Detection rules', icon: '📐' },
-  { key: 'About', label: 'About', icon: 'ℹ️' },
+const ADMIN_MENU_ITEMS: DrawerMenuItem[] = [
+  { key: 'MyChallans', label: 'My challans', Icon: FolderOpen },
+  { key: 'ManageRules', label: 'Manage rules', Icon: Wrench },
+  { key: 'ApproveOfficers', label: 'Approve officers', Icon: BadgeCheck },
+  { key: 'Settings', label: 'Settings', Icon: Settings },
+  { key: 'DetectionRules', label: 'Detection rules', Icon: Ruler },
+  { key: 'About', label: 'About', Icon: Info },
 ];
+
+function isMenuItemActive(leaf: string | undefined, item: DrawerMenuItem): boolean {
+  if (!leaf) {
+    return false;
+  }
+  if (item.key === 'MainTabs') {
+    const tab = (item.params as { screen?: string } | undefined)?.screen;
+    return tab === leaf;
+  }
+  return item.key === leaf;
+}
 
 function CustomDrawerContent(props: DrawerContentComponentProps) {
-  const { user, logout } = useApp();
-  const { navigation } = props;
+  const { user } = useApp();
+  const { navigation, state } = props;
   const menuItems = user?.role === 'admin' ? ADMIN_MENU_ITEMS : OFFICER_MENU_ITEMS;
+  const focusedLeaf = getFocusedLeafRouteName(state);
+  const profileFocused = focusedLeaf === 'Profile';
 
   const initials = (user?.name ?? 'U')
     .split(' ')
@@ -89,29 +110,56 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     .toUpperCase()
     .slice(0, 2);
 
-  const handleLogout = async () => {
+  const openProfile = () => {
     navigation.closeDrawer();
-    await logout();
+    navigation.navigate('Profile');
   };
 
   return (
-    <View style={drawerStyles.root}>
-      {/* Profile Header */}
-      <View style={drawerStyles.header}>
-        <View style={drawerStyles.avatarCircle}>
-          <Text style={drawerStyles.avatarText}>{initials}</Text>
+    <DrawerContentScrollView
+      {...props}
+      style={drawerStyles.scrollRoot}
+      contentContainerStyle={drawerStyles.scrollContent}
+      showsVerticalScrollIndicator>
+      <Pressable
+        onPress={openProfile}
+        style={({ pressed }) => [
+          drawerStyles.accountBlock,
+          profileFocused && drawerStyles.accountBlockActive,
+          pressed && drawerStyles.accountBlockPressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Open profile">
+        <View style={drawerStyles.avatarRow}>
+          <View style={drawerStyles.avatarCircle}>
+            <Text style={drawerStyles.avatarText}>{initials}</Text>
+          </View>
+          <View style={drawerStyles.accountTextCol}>
+            <Text style={drawerStyles.userName} numberOfLines={1}>
+              {user?.name ?? 'User'}
+            </Text>
+            <Text style={drawerStyles.userEmail} numberOfLines={2}>
+              {user?.email ?? ''}
+            </Text>
+            <View style={drawerStyles.rolePill}>
+              <Text style={drawerStyles.userRole}>{user?.role ?? 'Officer'}</Text>
+            </View>
+            <Text style={drawerStyles.accountHint}>Tap to open profile</Text>
+          </View>
         </View>
-        <Text style={drawerStyles.userName}>{user?.name ?? 'User'}</Text>
-        <Text style={drawerStyles.userEmail}>{user?.email ?? ''}</Text>
-        <Text style={drawerStyles.userRole}>{user?.role ?? 'Officer'}</Text>
-      </View>
+      </Pressable>
 
-      {/* Navigation Items */}
-      <ScrollView style={drawerStyles.nav} showsVerticalScrollIndicator={false}>
-        {menuItems.map((item, idx) => (
+      <Text style={drawerStyles.sectionLabel}>More</Text>
+      {menuItems.map((item, idx) => {
+        const active = isMenuItemActive(focusedLeaf, item);
+        return (
           <Pressable
             key={`${item.key}-${idx}`}
-            style={({ pressed }) => [drawerStyles.navItem, pressed && drawerStyles.navItemPressed]}
+            style={({ pressed }) => [
+              drawerStyles.navRow,
+              active && drawerStyles.navRowActive,
+              pressed && drawerStyles.navRowPressed,
+            ]}
             onPress={() => {
               navigation.closeDrawer();
               if (item.params) {
@@ -119,101 +167,144 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               } else {
                 navigation.navigate(item.key as any);
               }
-            }}>
-            <Text style={drawerStyles.navIcon}>{item.icon}</Text>
-            <Text style={drawerStyles.navLabel}>{item.label}</Text>
+            }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={item.label}>
+            <View style={drawerStyles.navIconSlot}>
+              <item.Icon
+                size={22}
+                color={active ? BRAND_HEADER_BG_DEEP : TEXT_PRIMARY}
+                strokeWidth={active ? 2.5 : 2}
+              />
+            </View>
+            <Text style={[drawerStyles.navLabel, active && drawerStyles.navLabelActive]}>{item.label}</Text>
+            <ChevronRight
+              size={22}
+              color={active ? BRAND_HEADER_BG : '#94a3b8'}
+              strokeWidth={2}
+            />
           </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* Logout Footer */}
-      <View style={drawerStyles.footer}>
-        <Pressable style={drawerStyles.logoutBtn} onPress={handleLogout}>
-          <Text style={drawerStyles.logoutIcon}>🚪</Text>
-          <Text style={drawerStyles.logoutText}>Logout</Text>
-        </Pressable>
-      </View>
-    </View>
+        );
+      })}
+      <View style={drawerStyles.scrollBottomPad} />
+    </DrawerContentScrollView>
   );
 }
 
 const drawerStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  header: {
-    backgroundColor: '#2563eb',
-    paddingTop: 48,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    gap: 4,
+  scrollRoot: { flex: 1, backgroundColor: '#f1f5f9' },
+  scrollContent: { paddingBottom: 24 },
+  accountBlock: {
+    backgroundColor: BRAND_HEADER_BG,
+    paddingTop: 16,
+    paddingBottom: 18,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: BRAND_HEADER_BG_DEEP,
   },
+  accountBlockActive: {
+    backgroundColor: BRAND_HEADER_BG_DEEP,
+  },
+  accountBlockPressed: { opacity: 0.94 },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#1d4ed8',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.15)',
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
   },
-  avatarText: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  userName: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  userEmail: { color: '#bfdbfe', fontSize: 12 },
-  userRole: { color: '#93c5fd', fontSize: 11, marginTop: 2, textTransform: 'capitalize' },
-  nav: { flex: 1, paddingTop: 8, paddingHorizontal: 10 },
-  navItem: {
+  avatarText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  accountTextCol: { flex: 1, minWidth: 0, gap: 4 },
+  userName: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  userEmail: { color: BRAND_ON_PRIMARY_SUBTLE, fontSize: 12, lineHeight: 16 },
+  rolePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+  },
+  userRole: {
+    color: BRAND_ON_PRIMARY_MUTED,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  accountHint: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    color: BRAND_ON_PRIMARY_SUBTLE,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TEXT_MUTED,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+    backgroundColor: '#f1f5f9',
+  },
+  navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    marginVertical: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
   },
-  navItemPressed: { backgroundColor: '#eff6ff' },
-  navIcon: { fontSize: 18, width: 26, textAlign: 'center' },
-  navLabel: { fontSize: 15, color: '#1f2937', fontWeight: '500' },
-  footer: {
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    padding: 12,
+  navRowActive: {
+    backgroundColor: '#EAF4FF',
   },
-  logoutBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  logoutIcon: { fontSize: 18, width: 26, textAlign: 'center' },
-  logoutText: { fontSize: 15, color: '#dc2626', fontWeight: '600' },
+  navRowPressed: { backgroundColor: BRAND_DRAWER_PRESS },
+  navIconSlot: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  navLabel: { flex: 1, fontSize: 16, color: TEXT_PRIMARY, fontWeight: '600' },
+  navLabelActive: { color: BRAND_HEADER_BG_DEEP, fontWeight: '800' },
+  scrollBottomPad: { height: 8, backgroundColor: '#fff' },
 });
 
 function HeaderTitle() {
   return (
     <View>
-      <Text style={headerStyles.title}>Traffic Violation</Text>
-      <Text style={headerStyles.subtitle}>Detection System</Text>
+      <Text style={headerStyles.title}>Traffic Eye</Text>
+      <Text style={headerStyles.subtitle} numberOfLines={1}>
+        AI enforcement · monitoring
+      </Text>
     </View>
   );
 }
 
 const headerStyles = StyleSheet.create({
-  title: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  subtitle: { color: '#bfdbfe', fontSize: 11 },
+  title: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  subtitle: { color: BRAND_ON_PRIMARY_SUBTLE, fontSize: 11, lineHeight: 14, maxWidth: 220 },
 });
 
 export function DrawerNavigator() {
-  const { user } = useApp();
+  const { user, logout } = useApp();
+
+  const confirmLogout = () => {
+    Alert.alert('Log out', 'Sign out of TrafficEye?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => void logout() },
+    ]);
+  };
 
   return (
     <Drawer.Navigator
       drawerContent={props => <CustomDrawerContent {...props} />}
       screenOptions={({ navigation }) => ({
-        drawerStyle: { width: 280 },
-        headerStyle: { backgroundColor: '#2563eb' },
+        sceneContainerStyle: { backgroundColor: 'transparent' },
+        drawerStyle: { width: 304, backgroundColor: '#f1f5f9' },
+        headerStyle: { backgroundColor: BRAND_HEADER_BG },
         headerTintColor: '#fff',
         headerTitle: () => <HeaderTitle />,
         headerLeft: () => (
@@ -223,22 +314,23 @@ export function DrawerNavigator() {
             accessibilityRole="button"
             accessibilityLabel="Open navigation menu"
             hitSlop={12}>
-            <Text style={{ color: '#fff', fontSize: 24 }}>☰</Text>
+            <Menu color="#fff" size={26} strokeWidth={2.5} />
           </Pressable>
         ),
         headerRight: () => (
-          <View style={{ marginRight: 14, alignItems: 'flex-end' }}>
-            <Text style={{ color: '#bfdbfe', fontSize: 10 }}>Welcome</Text>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
-              {user?.name ?? ''}
-            </Text>
-          </View>
+          <Pressable
+            onPress={confirmLogout}
+            style={{ marginRight: 14, paddingVertical: 8, paddingHorizontal: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel="Log out">
+            <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Log out</Text>
+          </Pressable>
         ),
       })}>
       <Drawer.Screen
         name="MainTabs"
         component={BottomTabNavigator}
-        options={{ title: 'Dashboard' }}
+        options={{ title: 'Home' }}
       />
       <Drawer.Screen
         name="Analytics"

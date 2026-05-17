@@ -10,6 +10,7 @@ module.exports = {
         allowUndefined: true,
       },
     ],
+    'react-native-worklets-core/plugin',
     'react-native-reanimated/plugin',
   ],
 };

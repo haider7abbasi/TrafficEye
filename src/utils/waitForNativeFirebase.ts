@@ -1,4 +1,3 @@
-import { InteractionManager } from 'react-native';
 import { getApps } from '@react-native-firebase/app';
 
 const STEP_MS = 50;
@@ -30,8 +29,9 @@ export function waitForNativeFirebaseReady(): Promise<void> {
       setTimeout(tick, STEP_MS);
     };
 
-    InteractionManager.runAfterInteractions(() => {
+    // Avoid InteractionManager (deprecated in RN); short defer is enough after first paint.
+    setTimeout(() => {
       setTimeout(tick, FIRST_GET_APPS_DELAY_MS);
-    });
+    }, 0);
   });
 }

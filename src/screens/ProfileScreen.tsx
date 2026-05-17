@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,38 @@ import {
   Pressable,
   TextInput,
 } from 'react-native';
+import {
+  IdCard,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
+  Save,
+  Shield,
+  User,
+  X,
+} from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
+import { useLoading } from '../context/LoadingContext';
+import { BRAND_ACCENT, BRAND_HEADER_BG, TEXT_MUTED, TEXT_PRIMARY } from '../theme/brandColors';
+
+const FIELD_ICON = 18;
+const FIELD_ICON_COLOR = '#64748b';
+
+type FieldKey = 'name' | 'email' | 'phone' | 'department' | 'location' | 'badgeNumber';
+
+const FIELDS: { key: FieldKey; label: string; Icon: typeof User }[] = [
+  { key: 'name', label: 'Full name', Icon: User },
+  { key: 'email', label: 'Email', Icon: Mail },
+  { key: 'phone', label: 'Phone', Icon: Phone },
+  { key: 'department', label: 'Department', Icon: Shield },
+  { key: 'location', label: 'Location', Icon: MapPin },
+  { key: 'badgeNumber', label: 'Badge number', Icon: IdCard },
+];
 
 export function ProfileScreen() {
   const { user, updateUser, records } = useApp();
+  const { runWithLoading } = useLoading();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     name: user?.name ?? '',
@@ -31,6 +59,21 @@ export function ProfileScreen() {
   const totalCaptures = records.length;
   const violationsFound = records.filter(r => r.violations.length > 0).length;
 
+  const { monthCount, avgConfidence } = useMemo(() => {
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const month = records.filter(r => {
+      const d = new Date(r.timestamp);
+      return d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+    const avg =
+      records.length > 0
+        ? Math.round(records.reduce((acc, v) => acc + v.confidence, 0) / records.length)
+        : 0;
+    return { monthCount: month, avgConfidence: avg };
+  }, [records]);
+
   useEffect(() => {
     if (!user) {
       return;
@@ -46,8 +89,13 @@ export function ProfileScreen() {
   }, [user]);
 
   const handleSave = async () => {
-    await updateUser(form);
-    setEditing(false);
+    try {
+      await runWithLoading(() => updateUser(form), 'Saving profile…');
+      setEditing(false);
+    } catch (e) {
+      const message = (e as { message?: string })?.message ?? 'Failed to save profile.';
+      console.warn('[Profile save]', message);
+    }
   };
 
   const handleCancel = () => {
@@ -64,7 +112,6 @@ export function ProfileScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      {/* Avatar Card */}
       <View style={styles.avatarCard}>
         <View style={styles.avatarCircle}>
           <Text style={styles.avatarText}>{initials}</Text>
@@ -72,52 +119,55 @@ export function ProfileScreen() {
         <Text style={styles.profileName}>{form.name}</Text>
         <Text style={styles.profileEmail}>{form.email}</Text>
         <View style={styles.rolePill}>
-          <Text style={styles.roleIcon}>🛡️</Text>
+          <Shield size={14} color={BRAND_HEADER_BG} strokeWidth={2.2} />
           <Text style={styles.roleText}>{user?.role ?? 'Officer'}</Text>
         </View>
       </View>
 
-      {/* Profile Details */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View>
-            <Text style={styles.cardTitle}>Profile Information</Text>
-            <Text style={styles.cardSub}>Manage your personal details</Text>
+            <Text style={styles.cardTitle}>Profile</Text>
+            <Text style={styles.cardSub}>Details used in the app</Text>
           </View>
           {!editing ? (
-            <Pressable style={styles.editBtn} onPress={() => setEditing(true)}>
-              <Text style={styles.editBtnText}>✏ Edit</Text>
+            <Pressable style={styles.editBtn} onPress={() => setEditing(true)} accessibilityRole="button">
+              <View style={styles.btnRow}>
+                <Pencil size={14} color="#374151" strokeWidth={2} />
+                <Text style={styles.editBtnText}>Edit</Text>
+              </View>
             </Pressable>
           ) : (
             <View style={styles.actionRow}>
-              <Pressable style={styles.cancelBtn} onPress={handleCancel}>
-                <Text style={styles.cancelBtnText}>✕ Cancel</Text>
+              <Pressable style={styles.cancelBtn} onPress={handleCancel} accessibilityRole="button">
+                <View style={styles.btnRow}>
+                  <X size={14} color="#6b7280" strokeWidth={2} />
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </View>
               </Pressable>
-              <Pressable style={styles.saveBtn} onPress={handleSave}>
-                <Text style={styles.saveBtnText}>💾 Save</Text>
+              <Pressable style={styles.saveBtn} onPress={handleSave} accessibilityRole="button">
+                <View style={styles.btnRow}>
+                  <Save size={14} color="#fff" strokeWidth={2} />
+                  <Text style={styles.saveBtnText}>Save</Text>
+                </View>
               </Pressable>
             </View>
           )}
         </View>
 
-        {[
-          { icon: '👤', label: 'Full Name', key: 'name' },
-          { icon: '✉', label: 'Email', key: 'email' },
-          { icon: '📞', label: 'Phone Number', key: 'phone' },
-          { icon: '🛡️', label: 'Department', key: 'department' },
-          { icon: '📍', label: 'Location', key: 'location' },
-          { icon: '🎫', label: 'Badge Number', key: 'badgeNumber' },
-        ].map(field => (
+        {FIELDS.map(field => (
           <View key={field.key} style={styles.fieldWrap}>
             <Text style={styles.fieldLabel}>{field.label}</Text>
             <View style={styles.fieldRow}>
-              <Text style={styles.fieldIcon}>{field.icon}</Text>
+              <View style={styles.fieldIconSlot}>
+                <field.Icon size={FIELD_ICON} color={FIELD_ICON_COLOR} strokeWidth={2} />
+              </View>
               <TextInput
                 style={[
                   styles.fieldInput,
                   (!editing || field.key === 'email') && styles.fieldInputDisabled,
                 ]}
-                value={form[field.key as keyof typeof form]}
+                value={form[field.key]}
                 onChangeText={val => setForm(prev => ({ ...prev, [field.key]: val }))}
                 editable={editing && field.key !== 'email'}
                 keyboardType={field.key === 'email' ? 'email-address' : 'default'}
@@ -127,15 +177,14 @@ export function ProfileScreen() {
         ))}
       </View>
 
-      {/* Stats */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Account Statistics</Text>
-        <Text style={styles.cardSub}>Your activity summary</Text>
+        <Text style={styles.cardTitle}>Activity on this device</Text>
+        <Text style={styles.cardSub}>From your saved scan history</Text>
         <View style={styles.statsGrid}>
-          <StatBox value={totalCaptures} label="Total Captures" color="#2563eb" bg="#eff6ff" />
-          <StatBox value={violationsFound} label="Violations Found" color="#dc2626" bg="#fef2f2" />
-          <StatBox value={32} label="This Month" color="#16a34a" bg="#f0fdf4" />
-          <StatBox value="94%" label="Accuracy" color="#7c3aed" bg="#faf5ff" />
+          <StatBox value={totalCaptures} label="Total saves" color={BRAND_HEADER_BG} bg="#EAF4FF" />
+          <StatBox value={violationsFound} label="With violations" color="#dc2626" bg="#fef2f2" />
+          <StatBox value={monthCount} label="This month" color={BRAND_HEADER_BG} bg="#DCEEFF" />
+          <StatBox value={`${avgConfidence}%`} label="Avg confidence" color="#6d28d9" bg="#f5f3ff" />
         </View>
       </View>
     </ScrollView>
@@ -163,13 +212,13 @@ function StatBox({
 
 const statStyles = StyleSheet.create({
   box: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center', minWidth: '45%' },
-  value: { fontSize: 24, fontWeight: '800' },
-  label: { fontSize: 11, color: '#6b7280', marginTop: 2, textAlign: 'center' },
+  value: { fontSize: 22, fontWeight: '800' },
+  label: { fontSize: 11, color: TEXT_MUTED, marginTop: 2, textAlign: 'center' },
 });
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
-  content: { padding: 14, gap: 14, paddingBottom: 30 },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  content: { padding: 16, gap: 14, paddingBottom: 32 },
   avatarCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -183,24 +232,23 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  profileName: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  profileEmail: { fontSize: 13, color: '#6b7280' },
+  profileName: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY },
+  profileEmail: { fontSize: 13, color: TEXT_MUTED },
   rolePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#eff6ff',
+    gap: 6,
+    backgroundColor: '#EAF4FF',
     borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingVertical: 5,
   },
-  roleIcon: { fontSize: 13 },
-  roleText: { color: '#2563eb', fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
+  roleText: { color: BRAND_HEADER_BG, fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
   card: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -210,16 +258,17 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  cardSub: { fontSize: 12, color: '#9ca3af' },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  cardSub: { fontSize: 12, color: TEXT_MUTED },
   editBtn: {
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  editBtnText: { fontSize: 12, color: '#374151', fontWeight: '500' },
+  btnRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  editBtnText: { fontSize: 12, color: '#374151', fontWeight: '600' },
   actionRow: { flexDirection: 'row', gap: 8 },
   cancelBtn: {
     borderWidth: 1,
@@ -228,9 +277,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  cancelBtnText: { fontSize: 12, color: '#6b7280', fontWeight: '500' },
+  cancelBtnText: { fontSize: 12, color: '#6b7280', fontWeight: '600' },
   saveBtn: {
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_ACCENT,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -248,7 +297,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     gap: 8,
   },
-  fieldIcon: { fontSize: 14 },
+  fieldIconSlot: { width: 26, alignItems: 'center', justifyContent: 'center' },
   fieldInput: {
     flex: 1,
     paddingVertical: 10,

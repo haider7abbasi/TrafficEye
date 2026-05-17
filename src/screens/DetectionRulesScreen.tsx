@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { TrafficEyeLoader } from '../components/TrafficEyeLoader';
 import firestore from '@react-native-firebase/firestore';
 import {
   CHALLAN_PDF_FIELDS,
@@ -23,6 +24,14 @@ import {
   sessionFrameObjectPath,
 } from '../config/storagePaths';
 import { getRoboflowDeployRegistry, listRoboflowTrafficProjects } from '../config/roboflowModels';
+import {
+  BRAND_ACCENT,
+  SURFACE_PANEL,
+  SURFACE_PANEL_BORDER,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+} from '../theme/brandColors';
 
 export function DetectionRulesScreen() {
   const plateExample = ' ab-12 c  ';
@@ -63,10 +72,22 @@ export function DetectionRulesScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>On-device violation logic</Text>
+        <Text style={styles.cardSub}>
+          Vehicle model must detect Bus, car, truck, or Motorcycle before any challan is raised from specialists.
+        </Text>
+        <Text style={styles.body}>
+          Phone or seatbelt detections alone (no vehicle box) → no violation. Car: mobile needs using/calling/texting
+          classes; bike also counts phone_in_hand. Combined outcomes show as one headline (e.g. Mobile+Seatbelt
+          Violation).
+        </Text>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Traffic rules (live from Firestore)</Text>
         <Text style={styles.cardSub}>Collection: {TRAFFIC_RULES_COLLECTION}</Text>
         {loadingRules ? (
-          <ActivityIndicator color="#2563eb" />
+          <TrafficEyeLoader size="small" color={BRAND_ACCENT} />
         ) : rules.length === 0 ? (
           <Text style={styles.note}>No active traffic rules found yet.</Text>
         ) : (
@@ -87,7 +108,7 @@ export function DetectionRulesScreen() {
           <Text style={styles.mono}>src/rules/rulesFreeze.ts</Text> (currently{' '}
           <Text style={styles.mono}>{String(TRAFFICEYE_RULES_FREEZE_VERSION)}</Text>).
         </Text>
-        <Text style={styles.cardSub}>Firestore collection ids (§4 blueprint)</Text>
+        <Text style={styles.cardSub}>Firestore collection ids (section 4 blueprint)</Text>
         <Text style={styles.monoSmall}>
           {USERS_COLLECTION} / … / {VIOLATIONS_SUBCOLLECTION}
           {'\n'}
@@ -176,38 +197,40 @@ export function DetectionRulesScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 14, gap: 14, paddingBottom: 32 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: SURFACE_PANEL,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: SURFACE_PANEL_BORDER,
     gap: 10,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  cardSub: { fontSize: 12, color: '#9ca3af', marginBottom: 4 },
-  body: { fontSize: 13, color: '#6b7280', lineHeight: 20 },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  cardSub: { fontSize: 12, color: TEXT_MUTED, marginBottom: 4 },
+  body: { fontSize: 13, color: TEXT_SECONDARY, lineHeight: 20 },
   tableRow: { gap: 6, paddingVertical: 8 },
-  tableRowBorder: { borderTopWidth: 1, borderTopColor: '#f3f4f6' },
-  mono: { fontSize: 12, fontFamily: 'monospace', color: '#111827' },
-  monoSmall: { fontSize: 11, fontFamily: 'monospace', color: '#374151', lineHeight: 17 },
-  badge: { fontSize: 11, color: '#2563eb', fontWeight: '600' },
-  specId: { fontSize: 12, color: '#059669', fontFamily: 'monospace' },
-  note: { fontSize: 11, color: '#6b7280', lineHeight: 16 },
+  tableRowBorder: { borderTopWidth: 1, borderTopColor: SURFACE_PANEL_BORDER },
+  mono: { fontSize: 12, fontFamily: 'monospace', color: TEXT_PRIMARY },
+  monoSmall: { fontSize: 11, fontFamily: 'monospace', color: TEXT_SECONDARY, lineHeight: 17 },
+  badge: { fontSize: 11, color: BRAND_ACCENT, fontWeight: '600' },
+  specId: { fontSize: 12, color: BRAND_ACCENT, fontFamily: 'monospace' },
+  note: { fontSize: 11, color: TEXT_SECONDARY, lineHeight: 16 },
   exampleBox: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
     borderRadius: 10,
     padding: 12,
     gap: 4,
     marginTop: 4,
+    borderWidth: 1,
+    borderColor: SURFACE_PANEL_BORDER,
   },
-  exampleLabel: { fontSize: 11, fontWeight: '600', color: '#9ca3af' },
+  exampleLabel: { fontSize: 11, fontWeight: '600', color: TEXT_MUTED },
   pdfRow: { gap: 4, paddingVertical: 8 },
-  pdfKey: { fontSize: 12, fontFamily: 'monospace', color: '#111827' },
-  pdfLabel: { fontSize: 13, color: '#374151' },
-  pdfSource: { fontSize: 11, color: '#2563eb' },
-  ruleTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  pdfKey: { fontSize: 12, fontFamily: 'monospace', color: TEXT_PRIMARY },
+  pdfLabel: { fontSize: 13, color: TEXT_SECONDARY },
+  pdfSource: { fontSize: 11, color: BRAND_ACCENT },
+  ruleTitle: { fontSize: 13, fontWeight: '700', color: TEXT_PRIMARY },
   deployRow: { gap: 4, paddingVertical: 8 },
 });

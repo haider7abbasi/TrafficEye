@@ -11,6 +11,15 @@ import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useApp } from '../context/AppContext';
 import type { BottomTabParamList } from '../navigation/BottomTabNavigator';
+import { Calendar, Car, ClipboardList, MapPin, Trash2 } from 'lucide-react-native';
+import {
+  BRAND_ACCENT,
+  SURFACE_PANEL,
+  SURFACE_PANEL_BORDER,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+} from '../theme/brandColors';
 
 export function HistoryScreen() {
   const { records, deleteRecord } = useApp();
@@ -19,10 +28,13 @@ export function HistoryScreen() {
   if (records.length === 0) {
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyIcon}>📋</Text>
-        <Text style={styles.emptyTitle}>Nothing here yet</Text>
+        <View style={styles.emptyIconWrap}>
+          <ClipboardList size={48} color={TEXT_MUTED} strokeWidth={1.75} />
+        </View>
+        <Text style={styles.emptyTitle}>No saved scans yet</Text>
         <Text style={styles.emptyDesc}>
-          When you scan a scene and save detections, they will show up in this list.
+          Open the Scan tab, run detection on a photo or video, then tap Save on the result screen. Your saved items
+          appear here.
         </Text>
         <Pressable
           style={styles.emptyCta}
@@ -37,7 +49,7 @@ export function HistoryScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.listTitle}>Violation History ({records.length})</Text>
+      <Text style={styles.listTitle}>Violation history ({records.length})</Text>
       {records.map(item => {
         const hasViolations = item.violations.length > 0;
         return (
@@ -69,11 +81,11 @@ export function HistoryScreen() {
               )}
 
               <View style={styles.detailRow}>
-                <Text style={styles.detailIcon}>📍</Text>
+                <MapPin size={15} color={TEXT_MUTED} strokeWidth={2} />
                 <Text style={styles.detailText}>{item.location}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailIcon}>📅</Text>
+                <Calendar size={15} color={TEXT_MUTED} strokeWidth={2} />
                 <Text style={styles.detailText}>
                   {new Date(item.timestamp).toLocaleDateString()} at{' '}
                   {new Date(item.timestamp).toLocaleTimeString()}
@@ -81,15 +93,15 @@ export function HistoryScreen() {
               </View>
               {item.vehicleNumber && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailIcon}>🚗</Text>
+                  <Car size={15} color={TEXT_MUTED} strokeWidth={2} />
                   <Text style={styles.detailText}>Vehicle: {item.vehicleNumber}</Text>
                 </View>
               )}
               <Text style={styles.confidence}>Confidence: {item.confidence}%</Text>
 
               <Pressable style={styles.deleteBtn} onPress={() => deleteRecord(item.id)}>
-                <Text style={styles.deleteIcon}>🗑</Text>
-                <Text style={styles.deleteBtnText}>Delete Record</Text>
+                <Trash2 size={16} color="#dc2626" strokeWidth={2} />
+                <Text style={styles.deleteBtnText}>Delete record</Text>
               </Pressable>
             </View>
           </View>
@@ -100,15 +112,15 @@ export function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 14, gap: 14, paddingBottom: 30 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  emptyIcon: { fontSize: 56, marginBottom: 12 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#374151', marginBottom: 6 },
-  emptyDesc: { fontSize: 14, color: '#6b7280', textAlign: 'center', lineHeight: 20, maxWidth: 280 },
+  emptyIconWrap: { marginBottom: 12, opacity: 0.9 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY, marginBottom: 6 },
+  emptyDesc: { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 20, maxWidth: 280 },
   emptyCta: {
     marginTop: 20,
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_ACCENT,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 10,
@@ -116,13 +128,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyCtaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  listTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  listTitle: { fontSize: 17, fontWeight: '700', color: TEXT_PRIMARY },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: SURFACE_PANEL,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: SURFACE_PANEL_BORDER,
   },
   imageWrap: { position: 'relative' },
   thumb: { width: '100%', height: 180 },
@@ -149,18 +161,17 @@ const styles = StyleSheet.create({
   tagText: { color: '#dc2626', fontSize: 11, fontWeight: '500' },
   clearTag: {
     borderWidth: 1,
-    borderColor: '#bbf7d0',
-    backgroundColor: '#f0fdf4',
+    borderColor: '#DCEEFF',
+    backgroundColor: '#EAF4FF',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
     alignSelf: 'flex-start',
   },
-  clearTagText: { color: '#16a34a', fontSize: 11, fontWeight: '500' },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailIcon: { fontSize: 13 },
-  detailText: { fontSize: 13, color: '#6b7280', flex: 1 },
-  confidence: { fontSize: 11, color: '#9ca3af' },
+  clearTagText: { color: '#2E7D32', fontSize: 11, fontWeight: '600' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  detailText: { fontSize: 13, color: TEXT_SECONDARY, flex: 1 },
+  confidence: { fontSize: 11, color: TEXT_MUTED },
   deleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -172,6 +183,5 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
-  deleteIcon: { fontSize: 14 },
   deleteBtnText: { color: '#dc2626', fontWeight: '500', fontSize: 13 },
 });

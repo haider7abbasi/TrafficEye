@@ -4,16 +4,17 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  ActivityIndicator,
   TextInput,
   Pressable,
   Alert,
   Image,
 } from 'react-native';
-import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import firestore, { FirebaseFirestoreTypes, serverTimestamp } from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { CANDIDATES_COLLECTION, CHALLANS_COLLECTION } from '../config/collections';
+import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import { useApp } from '../context/AppContext';
+import { useLoading } from '../context/LoadingContext';
 import { normalizePlateCanonical, normalizePlateForDisplay } from '../rules/plateNormalization';
 import type { SpecViolationId } from '../rules/specViolationMapping';
 import { markChallanConfirmed } from '../services/dedupGate';
@@ -62,6 +63,7 @@ function asSpecViolationIds(raw: unknown): SpecViolationId[] {
 
 export function CandidateQueueScreen() {
   const { user, uploadChallanPdfFromBase64 } = useApp();
+  const { runWithLoading } = useLoading();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<CandidateQueueItem[]>([]);
   const [plateDrafts, setPlateDrafts] = useState<Record<string, string>>({});
@@ -149,7 +151,7 @@ export function CandidateQueueScreen() {
       await firestore().collection(CANDIDATES_COLLECTION).doc(item.id).set(
         {
           status: 'discarded',
-          discardedAt: firestore.FieldValue.serverTimestamp(),
+          discardedAt: serverTimestamp(),
         },
         { merge: true },
       );
@@ -177,6 +179,7 @@ export function CandidateQueueScreen() {
 
     setConfirmingId(item.id);
     try {
+      await runWithLoading(async () => {
       const challanId = `chal-${Date.now()}-${item.id}`;
       let evidenceRef = item.evidenceImageRef;
       let plateCropRef = item.plateCropRef;
@@ -259,7 +262,7 @@ export function CandidateQueueScreen() {
             confirmedAt: firestore.Timestamp.fromDate(confirmedAt),
             vehiclePlateDisplay: plateDisplay,
             vehiclePlateCanonical: plateCanonical,
-            updatedAt: firestore.FieldValue.serverTimestamp(),
+            updatedAt: serverTimestamp(),
           },
           { merge: true },
         );
@@ -270,6 +273,7 @@ export function CandidateQueueScreen() {
         confirmedAtMs: confirmedAt.getTime(),
       });
       Alert.alert('Challan confirmed', `Reference: ${challanId}`);
+      }, 'Confirming challan…');
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to confirm challan.';
       Alert.alert('Confirmation failed', message);
@@ -279,11 +283,7 @@ export function CandidateQueueScreen() {
   };
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ScreenLoadingCenter message="Loading candidates…" />;
   }
 
   return (
@@ -346,8 +346,8 @@ export function CandidateQueueScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6', padding: 14 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent', padding: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   heading: { fontSize: 20, fontWeight: '800', color: '#111827' },
   subtle: { color: '#6b7280', marginTop: 2 },
   empty: { marginTop: 16, color: '#6b7280' },
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },
   confirmBtn: {
     flex: 1,
-    backgroundColor: '#16a34a',
+    backgroundColor: '#0057B8',
     borderRadius: 8,
     paddingVertical: 10,
     alignItems: 'center',

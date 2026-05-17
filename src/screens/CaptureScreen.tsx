@@ -6,16 +6,32 @@ import {
   StyleSheet,
   ScrollView,
   Modal,
-  ActivityIndicator,
   Image,
   Alert,
+  TextInput,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
+import {
+  Camera,
+  runAtTargetFps,
+  useCameraDevice,
+  useCameraPermission,
+  useFrameProcessor,
+} from 'react-native-vision-camera';
+import { useRunOnJS } from 'react-native-worklets-core';
 import { useApp, ViolationRecord } from '../context/AppContext';
-import { normalizePlateForDisplay } from '../rules/plateNormalization';
+import { normalizePlateCanonical, normalizePlateForDisplay } from '../rules/plateNormalization';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { analyzeLocalImageForViolations } from '../services/roboflowOrchestrator';
+import { analyzeLocalImageForViolations, type InferencePlainLanguage } from '../services/roboflowOrchestrator';
+import {
+  BRAND_ACCENT,
+  SURFACE_PANEL,
+  SURFACE_PANEL_BORDER,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+} from '../theme/brandColors';
 import {
   capturePhotoWithDeviceCamera,
   pickPhotoFromDeviceLibrary,
@@ -23,14 +39,27 @@ import {
 } from '../services/nativeImageCapture';
 import { extractApprox1FpsJpegUrisFromVideo } from '../services/extractVideoFrames';
 import type { SpecViolationId } from '../rules/specViolationMapping';
-import type { RoboflowPrediction } from '../services/roboflowViolationPolicy';
+import { predictionToPixelCropRect, type RoboflowPrediction } from '../services/roboflowViolationPolicy';
+import { CaptureHomeDashboard } from '../components/capture/CaptureHomeDashboard';
+import { TrafficEyeLoader } from '../components/TrafficEyeLoader';
 import { startFrameSampler } from '../services/frameSampler';
 import { createArrayFrameProvider, createSequentialFrameProvider } from '../services/videoFrameIterator';
 import {
-  buildViolationSignature,
   evaluateDedupGate,
+  buildViolationSignature,
   registerCandidateObservation,
 } from '../services/dedupGate';
+import {
+  AlertTriangle,
+  BadgeCheck,
+  Calendar,
+  Car,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Info,
+  MapPin,
+} from 'lucide-react-native';
 
 function isLocalImageUri(uri: string): boolean {
   return uri.startsWith('file://') || uri.startsWith('content://') || /^[a-zA-Z]:\\/.test(uri) || uri.startsWith('/');
@@ -43,6 +72,7 @@ type Props = {
 type PendingInference = {
   specViolationIds: SpecViolationId[];
   platePrediction: RoboflowPrediction | null;
+  plainLanguage: InferencePlainLanguage;
 };
 
 function visionPhotoPathToUri(path: string): string {
@@ -51,7 +81,8 @@ function visionPhotoPathToUri(path: string): string {
 }
 
 export function CaptureScreen({ navigation }: Props) {
-  const { records, addRecord, createIntakeSession, uploadCandidateEvidence, createCandidate } = useApp();
+  const { records, addRecord, createIntakeSession, uploadCandidateEvidence, createCandidate, user } =
+    useApp();
   const { hasPermission: hasCameraPermission, requestPermission: requestCameraPermission } = useCameraPermission();
   /** Live monitoring: rear camera only (road-facing). Still capture via image picker can use the system camera UI. */
   const cameraDevice = useCameraDevice('back');
@@ -64,6 +95,7 @@ export function CaptureScreen({ navigation }: Props) {
   const [pendingEvidenceContentType, setPendingEvidenceContentType] = useState<string | undefined>(undefined);
   const [pendingResult, setPendingResult] = useState<Omit<ViolationRecord, 'id' | 'timestamp'> | null>(null);
   const [pendingInference, setPendingInference] = useState<PendingInference | null>(null);
+  const [pendingPlate, setPendingPlate] = useState('');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [liveRunning, setLiveRunning] = useState(false);
   const [liveFrames, setLiveFrames] = useState(0);
@@ -71,6 +103,8 @@ export function CaptureScreen({ navigation }: Props) {
   const [liveLastInfo, setLiveLastInfo] = useState('Idle');
   const [videoExtracting, setVideoExtracting] = useState(false);
   const [liveCameraVisible, setLiveCameraVisible] = useState(false);
+  /** Updated from VisionCamera frame processor (~1 Hz) — preview buffer size, not photo file size. */
+  const [liveStreamDims, setLiveStreamDims] = useState('');
   const stopLiveRef = useRef<(() => void) | null>(null);
   const processLiveFrameRef = useRef<
     | ((
@@ -82,9 +116,37 @@ export function CaptureScreen({ navigation }: Props) {
     | null
   >(null);
 
+  const reportLiveStreamDims = useRunOnJS((width: number, height: number) => {
+    setLiveStreamDims(`${width}×${height}`);
+  }, []);
+
+  const livePreviewFrameProcessor = useFrameProcessor(
+    frame => {
+      'worklet';
+      runAtTargetFps(1, () => {
+        'worklet';
+        if (!frame.isValid) {
+          return;
+        }
+        reportLiveStreamDims(frame.width, frame.height);
+      });
+    },
+    [reportLiveStreamDims],
+  );
+
   const totalRecords = records.length;
   const violationsFound = records.filter(r => r.violations.length > 0).length;
   const interactionLocked = detecting || liveRunning || videoExtracting;
+
+  const busyBannerText = detecting
+    ? 'Analyzing image…'
+    : videoExtracting
+    ? 'Preparing video…'
+    : liveRunning
+    ? liveCameraVisible
+      ? 'Live camera open — use Stop when done.'
+      : 'Live scan running — stop before other actions.'
+    : '';
 
   useEffect(() => {
     return () => {
@@ -132,10 +194,12 @@ export function CaptureScreen({ navigation }: Props) {
         location: 'Main Street & 5th Avenue',
         vehicleNumber: undefined,
       };
+      setPendingPlate('');
       setPendingResult(mapped);
       setPendingInference({
         specViolationIds: result.specViolationIds,
         platePrediction: result.platePrediction,
+        plainLanguage: result.plainLanguage,
       });
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
@@ -191,18 +255,29 @@ export function CaptureScreen({ navigation }: Props) {
     if (pendingResult && pendingImage) {
       // Phase 4 policy: non-violations are discarded; no cloud writes for this frame.
       if (pendingResult.violations.length === 0) {
-        Alert.alert('No violation detected', 'Frame discarded (no cloud write) as per phase policy.');
+        Alert.alert(
+          'No violation detected',
+          pendingInference?.plainLanguage?.headline
+            ? `${pendingInference.plainLanguage.headline}\n\n${pendingInference.plainLanguage.bullets.slice(0, 4).join('\n')}`
+            : 'Frame discarded (no cloud write) as per phase policy.',
+        );
         setPendingResult(null);
         setPendingImage(null);
+        setPendingPlate('');
         setPendingEvidenceContentType(undefined);
         setPendingInference(null);
         setActiveSessionId(null);
         return;
       }
 
-      const vehicleNumber = pendingResult.vehicleNumber
+      const vehicleNumber = pendingPlate.trim()
+        ? normalizePlateForDisplay(pendingPlate.trim())
+        : pendingResult.vehicleNumber
         ? normalizePlateForDisplay(pendingResult.vehicleNumber)
         : undefined;
+      const plateTrim = pendingPlate.trim();
+      const candidatePlateDisplay = plateTrim ? normalizePlateForDisplay(plateTrim) : undefined;
+      const candidatePlateCanonical = plateTrim ? normalizePlateCanonical(plateTrim) : undefined;
 
       // Candidate creation for live/local inference path with dedup create/merge decision.
       if (pendingInference && pendingInference.specViolationIds.length > 0) {
@@ -228,6 +303,8 @@ export function CaptureScreen({ navigation }: Props) {
               dedupSignature: signature,
               evidenceImageRef: uploaded.objectPath,
               locationText: pendingResult.location,
+              vehiclePlateDisplay: candidatePlateDisplay,
+              vehiclePlateCanonical: candidatePlateCanonical,
               plateBox: pendingInference.platePrediction
                 ? {
                     x: pendingInference.platePrediction.x,
@@ -260,6 +337,7 @@ export function CaptureScreen({ navigation }: Props) {
       await addRecord(record);
       setPendingResult(null);
       setPendingImage(null);
+      setPendingPlate('');
       setPendingEvidenceContentType(undefined);
       setPendingInference(null);
       setActiveSessionId(null);
@@ -270,6 +348,7 @@ export function CaptureScreen({ navigation }: Props) {
   const handleRetake = () => {
     setPendingResult(null);
     setPendingImage(null);
+    setPendingPlate('');
     setPendingEvidenceContentType(undefined);
     setPendingInference(null);
     setActiveSessionId(null);
@@ -282,6 +361,7 @@ export function CaptureScreen({ navigation }: Props) {
     liveSessionIdRef.current = null;
     setLiveCameraVisible(false);
     setLiveRunning(false);
+    setLiveStreamDims('');
     setLiveLastInfo('Stopped');
   }, []);
 
@@ -302,9 +382,14 @@ export function CaptureScreen({ navigation }: Props) {
     let specIds: SpecViolationId[] = [];
     let violationLabels: string[] = [];
     let platePrediction: RoboflowPrediction | null = null;
-
+    let savedHeadline = '';
     try {
-      const result = await analyzeLocalImageForViolations(imageUri);
+      const result = await analyzeLocalImageForViolations({
+        uri: imageUri,
+        mimeType: 'image/jpeg',
+        fileName: `${frameId.replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg`,
+      });
+      savedHeadline = result.plainLanguage.headline;
       specIds = result.specViolationIds;
       violationLabels = result.violationLabels;
       platePrediction = result.platePrediction;
@@ -316,7 +401,7 @@ export function CaptureScreen({ navigation }: Props) {
     }
 
     if (violationLabels.length === 0) {
-      setLiveLastInfo(`Frame ${frameId}: no violation`);
+      setLiveLastInfo(`${frameId}: ${savedHeadline || 'No violation'}`);
       return;
     }
 
@@ -372,7 +457,7 @@ export function CaptureScreen({ navigation }: Props) {
     };
     await addRecord(record);
     setLiveViolations(v => v + 1);
-    setLiveLastInfo(`Frame ${frameId}: violation saved`);
+    setLiveLastInfo(`${frameId}: ${savedHeadline} — saved`);
   };
 
   processLiveFrameRef.current = processLiveFrame;
@@ -501,6 +586,7 @@ export function CaptureScreen({ navigation }: Props) {
     liveSamplerStartedRef.current = false;
     setLiveFrames(0);
     setLiveViolations(0);
+    setLiveStreamDims('');
     setLiveLastInfo('Starting camera…');
     setLiveRunning(true);
     setLiveCameraVisible(true);
@@ -516,7 +602,10 @@ export function CaptureScreen({ navigation }: Props) {
         return;
       }
       setVideoExtracting(true);
-      const { frameUris, durationMs } = await extractApprox1FpsJpegUrisFromVideo(picked.uri);
+      const { frameUris, durationMs } = await extractApprox1FpsJpegUrisFromVideo(
+        picked.uri,
+        picked.mimeType,
+      );
       setVideoExtracting(false);
       if (frameUris.length === 0) {
         Alert.alert('Video', 'No frames could be extracted from this file.');
@@ -524,10 +613,10 @@ export function CaptureScreen({ navigation }: Props) {
       }
       const sec = Math.max(1, Math.round(durationMs / 1000));
       Alert.alert(
-        'Video ready',
-        `${frameUris.length} JPEG frame(s) prepared (~${sec}s source, length capped for analysis). Run ~1 FPS Roboflow scan?`,
+        'Ready to scan',
+        `We prepared ${frameUris.length} frame${frameUris.length === 1 ? '' : 's'} from about ${sec}s of video (very long clips may be shortened). Start the automatic scan?`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Not now', style: 'cancel' },
           {
             text: 'Start scan',
             onPress: () => {
@@ -544,144 +633,57 @@ export function CaptureScreen({ navigation }: Props) {
   };
 
   if (pendingResult && pendingImage) {
-    return <DetectionResult
-      imageUri={pendingImage}
-      result={pendingResult}
-      onSave={handleSave}
-      onRetake={handleRetake}
-    />;
+    return (
+      <SafeAreaView style={styles.safeRoot} edges={['top', 'left', 'right']}>
+        <DetectionResult
+          imageUri={pendingImage}
+          result={pendingResult}
+          platePrediction={pendingInference?.platePrediction ?? null}
+          plainLanguage={pendingInference?.plainLanguage ?? null}
+          plateDraft={pendingPlate}
+          onPlateDraftChange={setPendingPlate}
+          onSave={handleSave}
+          onRetake={handleRetake}
+        />
+      </SafeAreaView>
+    );
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      {/* Stats */}
-      <View style={styles.statsCard}>
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: '#2563eb' }]}>{totalRecords}</Text>
-          <Text style={styles.statLabel}>Total Records</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: '#dc2626' }]}>{violationsFound}</Text>
-          <Text style={styles.statLabel}>Violations Found</Text>
-        </View>
-      </View>
-
-      {/* Capture Card */}
-      <View style={styles.card}>
-        <Text style={styles.sectionKicker}>Photos & video</Text>
-        <Text style={styles.cardTitle}>Scan a traffic scene</Text>
-        <Text style={styles.cardDesc}>
-          Use your camera or gallery — each image is sent to your hosted Roboflow detection models. Internet is
-          required. Video is analyzed as about one frame per second.
-        </Text>
-
-        <Pressable
-          style={[styles.primaryBtn, interactionLocked && styles.disabledBtn]}
-          disabled={interactionLocked}
-          onPress={handleDeviceCamera}
-          accessibilityRole="button"
-          accessibilityLabel="Open camera to take a photo">
-          <Text style={styles.primaryBtnIcon}>📷</Text>
-          <Text style={styles.primaryBtnText}>Take photo</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
-          disabled={interactionLocked}
-          onPress={handleDeviceGallery}
-          accessibilityRole="button"
-          accessibilityLabel="Choose a photo from gallery">
-          <Text style={styles.outlineBtnIcon}>🖼</Text>
-          <Text style={styles.outlineBtnText}>Choose photo from gallery</Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.outlineBtn, interactionLocked && styles.disabledBtn]}
-          disabled={interactionLocked}
-          onPress={handleChooseVideoForLiveScan}
-          accessibilityRole="button"
-          accessibilityLabel="Choose a video file to scan">
-          <Text style={styles.outlineBtnIcon}>🎬</Text>
-          <Text style={styles.outlineBtnText}>Choose video to scan (~1 frame per second)</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionKicker}>Continuous scan</Text>
-        <Text style={styles.cardTitle}>Live monitoring (~1 per second)</Text>
-        <View style={styles.livePolicyBanner}>
-          <Text style={styles.livePolicyBannerIcon} importantForAccessibility="no">
-            📷
-          </Text>
-          <View style={styles.livePolicyBannerTextCol}>
-            <Text style={styles.livePolicyBannerTitle}>Back camera only</Text>
-            <Text style={styles.livePolicyBannerSub}>
-              Live mode is locked to the rear camera for road-facing traffic. Use “Take photo” if you need the system
-              camera app (e.g. front camera).
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.cardDesc}>
-          About one photo per second while you hold the phone toward the scene. When the model finds violations, they
-          can be queued automatically. Stop from here or in full-screen.
-        </Text>
-        {!liveRunning ? (
-          <Pressable
-            style={[styles.primaryBtn, interactionLocked && styles.disabledBtn]}
-            disabled={interactionLocked}
-            onPress={startLiveMonitoring}
-            accessibilityRole="button"
-            accessibilityLabel="Start live monitoring with back camera only">
-            <Text style={styles.primaryBtnText}>Start live (back camera)</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={styles.stopBtn}
-            onPress={stopLiveMonitoring}
-            accessibilityRole="button"
-            accessibilityLabel="Stop live monitoring">
-            <Text style={styles.stopBtnText}>Stop live monitoring</Text>
-          </Pressable>
-        )}
-        <View style={styles.liveStatsCard}>
-          <Text style={styles.liveStatsTitle}>Session</Text>
-          <View style={styles.liveStatsRow}>
-            <Text style={styles.liveStatLabel}>Frames</Text>
-            <Text style={styles.liveStatValue}>{liveFrames}</Text>
-          </View>
-          <View style={styles.liveStatsRow}>
-            <Text style={styles.liveStatLabel}>Violations saved</Text>
-            <Text style={styles.liveStatValue}>{liveViolations}</Text>
-          </View>
-          <Text style={styles.liveStatStatus} numberOfLines={2}>
-            {liveLastInfo}
-          </Text>
-        </View>
-      </View>
-
-      {/* How it Works */}
-      <View style={styles.howCard}>
-        <Text style={styles.howTitle}>How it works</Text>
-        <Text style={styles.howItem}>
-          • Take a photo, pick from gallery, scan a video, or live mode (back camera only) — all use Roboflow hosted
-          inference on local frames
-        </Text>
-        <Text style={styles.howItem}>• Models check each frame for helmet, seatbelt, phone, and plate cues</Text>
-        <Text style={styles.howItem}>• Review what was found before you save</Text>
-        <Text style={styles.howItem}>• Saved items appear under History and (when applicable) the candidate queue</Text>
-      </View>
+    <SafeAreaView style={styles.safeRoot} edges={['top', 'left', 'right']}>
+      <ScrollView
+        style={styles.homeScroll}
+        contentContainerStyle={styles.homeContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        <CaptureHomeDashboard
+          officerName={user?.name?.split(/\s+/)[0]}
+          busyBannerText={busyBannerText}
+          totalRecords={totalRecords}
+          violationsFound={violationsFound}
+          liveRunning={liveRunning}
+          liveFrames={liveFrames}
+          liveViolations={liveViolations}
+          liveLastInfo={liveLastInfo}
+          interactionLocked={interactionLocked}
+          onCapturePhoto={handleDeviceCamera}
+          onPickGallery={handleDeviceGallery}
+          onScanVideo={handleChooseVideoForLiveScan}
+          onStartLive={startLiveMonitoring}
+          onStopLive={stopLiveMonitoring}
+        />
+      </ScrollView>
 
       {/* Detecting Modal */}
       <Modal visible={detecting} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ActivityIndicator size="large" color="#2563eb" style={{ marginBottom: 14 }} />
+            <TrafficEyeLoader size="large" color={BRAND_ACCENT} style={{ marginBottom: 14 }} />
             <Text style={styles.modalTitle}>Analyzing…</Text>
             <Text style={styles.modalDesc}>
-              Sending your image to Roboflow for detection. This may take up to a minute.
+              Sending your image for detection. On slow networks this can take up to a minute — the app is still
+              working.
             </Text>
-            {activeSessionId ? <Text style={styles.sessionHint}>Session: {activeSessionId}</Text> : null}
           </View>
         </View>
       </Modal>
@@ -689,9 +691,11 @@ export function CaptureScreen({ navigation }: Props) {
       <Modal visible={videoExtracting} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ActivityIndicator size="large" color="#2563eb" style={{ marginBottom: 14 }} />
+            <TrafficEyeLoader size="large" color={BRAND_ACCENT} style={{ marginBottom: 14 }} />
             <Text style={styles.modalTitle}>Preparing video…</Text>
-            <Text style={styles.modalDesc}>Extracting JPEG frames from your clip (may take a minute).</Text>
+            <Text style={styles.modalDesc}>
+              Turning your clip into still frames for scanning. Long videos take longer — keep the app open.
+            </Text>
           </View>
         </View>
       </Modal>
@@ -715,18 +719,19 @@ export function CaptureScreen({ navigation }: Props) {
               <View style={styles.liveCameraChipRow}>
                 <Text style={styles.liveCameraChip}>Back camera</Text>
                 <Text style={styles.liveCameraChipMuted}>~1 photo/s</Text>
+                {liveStreamDims ? (
+                  <Text style={styles.liveCameraChipMuted}>FP stream {liveStreamDims}</Text>
+                ) : null}
               </View>
-              {activeSessionId ? (
-                <Text style={styles.liveCameraSessionTxt} numberOfLines={1}>
-                  {activeSessionId}
-                </Text>
-              ) : null}
+              <Text style={styles.liveCameraSessionTxt} numberOfLines={2}>
+                Point at traffic · Captures about once per second
+              </Text>
             </View>
             <View style={styles.liveCameraHeaderSpacer} />
           </View>
           <Text style={styles.liveCameraHint}>Hold the phone so the rear camera faces the road · One capture per second</Text>
           {cameraDevice == null ? (
-            <ActivityIndicator size="large" color="#fff" style={{ marginTop: 24 }} />
+            <TrafficEyeLoader size="large" color="#ffffff" ringColor="#A8D4FF" style={{ marginTop: 24 }} />
           ) : (
             <Camera
               ref={cameraRef}
@@ -734,106 +739,357 @@ export function CaptureScreen({ navigation }: Props) {
               device={cameraDevice}
               isActive={liveCameraVisible}
               photo
+              frameProcessor={livePreviewFrameProcessor}
               onInitialized={handleLiveCameraInitialized}
             />
           )}
         </SafeAreaView>
       </Modal>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 type DetectionResultProps = {
   imageUri: string;
   result: Omit<ViolationRecord, 'id' | 'timestamp'>;
+  platePrediction: RoboflowPrediction | null;
+  plainLanguage: InferencePlainLanguage | null;
+  plateDraft: string;
+  onPlateDraftChange: (text: string) => void;
   onSave: () => void;
   onRetake: () => void;
 };
 
-function DetectionResult({ imageUri, result, onSave, onRetake }: DetectionResultProps) {
+const PREVIEW_H = 220;
+
+function computeContainLayout(
+  containerW: number,
+  containerH: number,
+  iw: number,
+  ih: number,
+): { offsetX: number; offsetY: number; scale: number } | null {
+  if (iw <= 0 || ih <= 0 || containerW <= 0 || containerH <= 0) {
+    return null;
+  }
+  const scale = Math.min(containerW / iw, containerH / ih);
+  const w = iw * scale;
+  const h = ih * scale;
+  const offsetX = (containerW - w) / 2;
+  const offsetY = (containerH - h) / 2;
+  return { offsetX, offsetY, scale };
+}
+
+function verdictVariant(
+  headline: string,
+  hasViolations: boolean,
+): 'danger' | 'ok' | 'info' {
+  if (hasViolations) {
+    return 'danger';
+  }
+  if (headline.includes('No vehicle')) {
+    return 'info';
+  }
+  return 'ok';
+}
+
+function DetectionResult({
+  imageUri,
+  result,
+  platePrediction,
+  plainLanguage,
+  plateDraft,
+  onPlateDraftChange,
+  onSave,
+  onRetake,
+}: DetectionResultProps) {
+  const navigation = useNavigation();
   const hasViolations = result.violations.length > 0;
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  const [previewW, setPreviewW] = useState(0);
+  const [technicalOpen, setTechnicalOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Image.getSize(
+      imageUri,
+      (w, h) => {
+        if (!cancelled && w > 0 && h > 0) {
+          setNaturalSize({ w, h });
+        }
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUri]);
+
+  const headline =
+    plainLanguage?.headline?.trim() ||
+    (hasViolations ? result.violations.join(' · ') : 'Nothing flagged on this image');
+  const badgeLabels =
+    plainLanguage?.displayViolationLabels && plainLanguage.displayViolationLabels.length > 0
+      ? plainLanguage.displayViolationLabels
+      : result.violations;
+  const verdict = verdictVariant(headline, hasViolations);
+  const noViolationHint = headline.includes('No vehicle')
+    ? 'No car or motorcycle was detected in this frame, so seatbelt and helmet rules did not apply. Capture again with the vehicle clearly in view if needed.'
+    : 'No traffic violations matched the rules for this scene. Nothing is sent to the queue—you can scan another image if needed.';
+
+  const plateOverlayLayout = (() => {
+    if (!platePrediction || !naturalSize || previewW <= 0) {
+      return null;
+    }
+    const lay = computeContainLayout(previewW, PREVIEW_H, naturalSize.w, naturalSize.h);
+    if (!lay) {
+      return null;
+    }
+    const crop = predictionToPixelCropRect(platePrediction, naturalSize.w, naturalSize.h);
+    return {
+      left: lay.offsetX + crop.x * lay.scale,
+      top: lay.offsetY + crop.y * lay.scale,
+      width: crop.width * lay.scale,
+      height: crop.height * lay.scale,
+    };
+  })();
+
+  const openCandidateQueue = () => {
+    navigation.navigate('MainTabs', { screen: 'Queue' });
+  };
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={[styles.card, { padding: 0, overflow: 'hidden' }]}>
-        <Image source={{ uri: imageUri }} style={styles.detectionImage} resizeMode="cover" />
+        <View
+          style={styles.imagePreviewWrap}
+          onLayout={e => setPreviewW(e.nativeEvent.layout.width)}>
+          <Image source={{ uri: imageUri }} style={styles.detectionImage} resizeMode="contain" />
+          {plateOverlayLayout ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.plateOverlay,
+                {
+                  left: plateOverlayLayout.left,
+                  top: plateOverlayLayout.top,
+                  width: plateOverlayLayout.width,
+                  height: plateOverlayLayout.height,
+                },
+              ]}
+            />
+          ) : null}
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.resultHeader}>
-          <Text style={styles.resultIcon}>{hasViolations ? '⚠️' : '✅'}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.resultTitle, { color: hasViolations ? '#dc2626' : '#16a34a' }]}>
-              {hasViolations
-                ? `${result.violations.length} Violation${result.violations.length > 1 ? 's' : ''} Detected`
-                : 'No Violations Detected'}
+      <View
+        style={[
+          styles.verdictCard,
+          verdict === 'danger' && styles.verdictCardDanger,
+          verdict === 'ok' && styles.verdictCardOk,
+          verdict === 'info' && styles.verdictCardInfo,
+        ]}>
+        <View style={styles.verdictRow}>
+          <View style={styles.verdictEmoji} importantForAccessibility="no">
+            {verdict === 'danger' ? (
+              <AlertTriangle size={28} color="#991b1b" strokeWidth={2.2} />
+            ) : verdict === 'info' ? (
+              <Info size={28} color="#92400e" strokeWidth={2.2} />
+            ) : (
+              <BadgeCheck size={28} color="#166534" strokeWidth={2.2} />
+            )}
+          </View>
+          <View style={{ flex: 1, gap: 6 }}>
+            <Text style={styles.verdictKicker}>Outcome</Text>
+            <Text
+              style={[
+                styles.verdictHeadline,
+                verdict === 'danger' && { color: '#991b1b' },
+                verdict === 'ok' && { color: '#166534' },
+                verdict === 'info' && { color: '#92400e' },
+              ]}>
+              {headline}
             </Text>
-            <Text style={styles.confidenceText}>Confidence: {result.confidence}%</Text>
+            <Text style={styles.verdictConfidence}>Model confidence (highest box): {result.confidence}%</Text>
+            {badgeLabels.length > 0 ? (
+              <View style={styles.badgesWrap}>
+                {badgeLabels.map((v, i) => (
+                  <View
+                    key={`${v}-${i}`}
+                    style={[styles.badge, verdict === 'danger' ? styles.badgeDanger : styles.badgeNeutral]}>
+                    <Text style={[styles.badgeText, verdict === 'danger' && styles.badgeTextDanger]}>{v}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
-
-        {hasViolations && (
-          <View style={styles.badgesWrap}>
-            {result.violations.map((v, i) => (
-              <View key={i} style={styles.badge}>
-                <Text style={styles.badgeText}>{v}</Text>
-              </View>
-            ))}
-          </View>
-        )}
       </View>
+
+      {plainLanguage && plainLanguage.bullets.length > 0 ? (
+        <View style={styles.card}>
+          <Pressable
+            onPress={() => setTechnicalOpen(o => !o)}
+            style={styles.technicalToggle}
+            accessibilityRole="button"
+            accessibilityLabel={technicalOpen ? 'Hide technical detection details' : 'Show technical detection details'}
+            accessibilityState={{ expanded: technicalOpen }}>
+            <View style={styles.technicalToggleHead}>
+              {technicalOpen ? (
+                <ChevronUp size={18} color={BRAND_ACCENT} strokeWidth={2.5} />
+              ) : (
+                <ChevronDown size={18} color={BRAND_ACCENT} strokeWidth={2.5} />
+              )}
+              <Text style={styles.technicalToggleText}>
+                {technicalOpen ? 'Hide' : 'Show'} model & rule details
+              </Text>
+            </View>
+            <Text style={styles.technicalToggleHint}>Per-model boxes, thresholds, and rule flags</Text>
+          </Pressable>
+          {technicalOpen ? (
+            <View style={styles.technicalBullets}>
+              {plainLanguage.bullets.map((line, i) => (
+                <Text key={i} style={styles.technicalBullet}>
+                  – {line}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Details</Text>
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>📍</Text>
+          <View style={styles.detailIconSlot}>
+            <MapPin size={14} color="#6b7280" strokeWidth={2} />
+          </View>
           <Text style={styles.detailLabel}>Location: </Text>
           <Text style={styles.detailValue}>{result.location}</Text>
         </View>
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>📅</Text>
+          <View style={styles.detailIconSlot}>
+            <Calendar size={14} color="#6b7280" strokeWidth={2} />
+          </View>
           <Text style={styles.detailLabel}>Date: </Text>
           <Text style={styles.detailValue}>{new Date().toLocaleDateString()}</Text>
         </View>
         <View style={styles.detailRow}>
-          <Text style={styles.detailIcon}>🕐</Text>
+          <View style={styles.detailIconSlot}>
+            <Clock size={14} color="#6b7280" strokeWidth={2} />
+          </View>
           <Text style={styles.detailLabel}>Time: </Text>
           <Text style={styles.detailValue}>{new Date().toLocaleTimeString()}</Text>
         </View>
         {result.vehicleNumber && (
           <View style={styles.detailRow}>
-            <Text style={styles.detailIcon}>🚗</Text>
+            <View style={styles.detailIconSlot}>
+              <Car size={14} color="#6b7280" strokeWidth={2} />
+            </View>
             <Text style={styles.detailLabel}>Vehicle: </Text>
             <Text style={styles.detailValue}>{result.vehicleNumber}</Text>
           </View>
         )}
       </View>
 
-      <Text style={styles.saveHint}>
-        {hasViolations
-          ? 'Save adds this to your history and may upload evidence for the officer queue (Roboflow results from scan or live mode).'
-          : 'No violation was found for this image. Saving is only needed when you want to keep a clear result in history.'}
-      </Text>
-      <Pressable
-        style={styles.primaryBtn}
-        onPress={onSave}
-        accessibilityRole="button"
-        accessibilityLabel="Save to history">
-        <Text style={styles.primaryBtnText}>Save to history</Text>
-      </Pressable>
-      <Pressable
-        style={[styles.outlineBtn, { marginBottom: 24 }]}
-        onPress={onRetake}
-        accessibilityRole="button"
-        accessibilityLabel="Discard and scan again">
-        <Text style={styles.outlineBtnText}>Scan again</Text>
-      </Pressable>
+      {hasViolations ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Number plate</Text>
+            <Text style={styles.cardDesc}>
+              The frame shows where the plate model found a plate (green outline). Enter the registration as read on
+              the vehicle or from your notes.
+            </Text>
+            <Text style={styles.plateLabel}>Plate (officer)</Text>
+            <TextInput
+              style={styles.plateInput}
+              value={plateDraft}
+              onChangeText={onPlateDraftChange}
+              placeholder="e.g. ABC-1234"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="characters"
+              accessibilityLabel="Vehicle number plate"
+            />
+            <Pressable
+              style={styles.queueBtn}
+              onPress={openCandidateQueue}
+              accessibilityRole="button"
+              accessibilityLabel="Open candidate queue for challan">
+              <Text style={styles.queueBtnText}>Candidate queue — generate challan</Text>
+            </Pressable>
+            <Text style={styles.queueHint}>
+              After you save below, open the queue to confirm the candidate, enter the plate again if needed, and
+              generate the PDF (report includes time, image, plate; challan record keeps a ~7-day expiry in Firestore).
+            </Text>
+          </View>
+          <Text style={styles.saveHint}>
+            Save sends this to History and may attach evidence for your candidate queue (per your org rules).
+          </Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={onSave}
+            accessibilityRole="button"
+            accessibilityLabel="Save to history">
+            <Text style={styles.primaryBtnText}>Save to history</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.outlineBtn, { marginBottom: 24 }]}
+            onPress={onRetake}
+            accessibilityRole="button"
+            accessibilityLabel="Discard and scan again">
+            <Text style={styles.outlineBtnText}>Discard and scan again</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={styles.saveHint}>{noViolationHint}</Text>
+          <Pressable
+            style={styles.primaryBtn}
+            onPress={onRetake}
+            accessibilityRole="button"
+            accessibilityLabel="Scan another image">
+            <Text style={styles.primaryBtnText}>Scan another image</Text>
+          </Pressable>
+          <View style={{ marginBottom: 24 }} />
+        </>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
+  safeRoot: { flex: 1, backgroundColor: 'transparent' },
+  homeScroll: { flex: 1, backgroundColor: 'transparent' },
+  homeContent: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 32,
+    flexGrow: 1,
+  },
+  root: { flex: 1, backgroundColor: 'transparent' },
   content: { padding: 14, gap: 14, paddingBottom: 30 },
+  busyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: '#fef3c7',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
+  busyBannerIcon: { marginTop: 1, alignItems: 'center', justifyContent: 'center' },
+  busyBannerText: { flex: 1, fontSize: 13, color: '#92400e', lineHeight: 19, fontWeight: '600' },
+  heroCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 8,
+  },
+  heroTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  heroSub: { fontSize: 14, color: TEXT_SECONDARY, lineHeight: 21 },
+  menuHint: { fontSize: 12, color: BRAND_ACCENT, fontWeight: '600', marginTop: 4 },
   statsCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -846,7 +1102,7 @@ const styles = StyleSheet.create({
   statItem: { flex: 1, alignItems: 'center' },
   statDivider: { width: 1, height: 40, backgroundColor: '#e5e7eb' },
   statValue: { fontSize: 28, fontWeight: '800' },
-  statLabel: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  statLabel: { fontSize: 11, color: TEXT_MUTED, marginTop: 2 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -858,15 +1114,15 @@ const styles = StyleSheet.create({
   sectionKicker: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#2563eb',
+    color: BRAND_ACCENT,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 4,
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  cardDesc: { fontSize: 13, color: '#6b7280', lineHeight: 20 },
+  cardDesc: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20 },
   primaryBtn: {
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_ACCENT,
     borderRadius: 10,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -879,7 +1135,7 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   outlineBtn: {
     borderWidth: 1,
-    borderColor: '#2563eb',
+    borderColor: BRAND_ACCENT,
     borderRadius: 10,
     paddingVertical: 14,
     flexDirection: 'row',
@@ -888,8 +1144,8 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 48,
   },
-  outlineBtnIcon: { fontSize: 18, color: '#2563eb' },
-  outlineBtnText: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
+  outlineBtnIcon: { fontSize: 18, color: BRAND_ACCENT },
+  outlineBtnText: { color: BRAND_ACCENT, fontSize: 15, fontWeight: '600' },
   stopBtn: {
     backgroundColor: '#dc2626',
     borderRadius: 10,
@@ -921,11 +1177,17 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     gap: 8,
   },
-  liveStatsTitle: { fontSize: 11, fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 },
+  liveStatsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   liveStatsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  liveStatLabel: { fontSize: 13, color: '#6b7280' },
+  liveStatLabel: { fontSize: 13, color: TEXT_MUTED },
   liveStatValue: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  liveStatStatus: { fontSize: 12, color: '#4b5560', lineHeight: 17, marginTop: 2 },
+  liveStatStatus: { fontSize: 12, color: TEXT_SECONDARY, lineHeight: 17, marginTop: 2 },
   disabledBtn: { opacity: 0.7 },
   howCard: {
     backgroundColor: '#eff6ff',
@@ -951,30 +1213,91 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', textAlign: 'center' },
-  modalDesc: { fontSize: 13, color: '#6b7280', textAlign: 'center' },
-  sessionHint: { fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 2 },
-  detectionImage: { width: '100%', height: 220 },
-  resultHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  resultIcon: { fontSize: 26 },
-  resultTitle: { fontSize: 16, fontWeight: '700' },
-  confidenceText: { fontSize: 13, color: '#6b7280', marginTop: 2 },
-  badgesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  badge: {
-    backgroundColor: '#fef2f2',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#fecaca',
+  modalDesc: { fontSize: 13, color: TEXT_MUTED, textAlign: 'center' },
+  imagePreviewWrap: {
+    height: PREVIEW_H,
+    width: '100%',
+    backgroundColor: '#111827',
+    position: 'relative',
   },
-  badgeText: { color: '#dc2626', fontSize: 12, fontWeight: '500' },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  detailIcon: { fontSize: 14 },
-  detailLabel: { fontSize: 13, color: '#6b7280' },
+  detectionImage: { width: '100%', height: PREVIEW_H },
+  plateOverlay: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#22c55e',
+    borderRadius: 4,
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+  },
+  verdictCard: {
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 2,
+  },
+  verdictCardDanger: { backgroundColor: '#fef2f2', borderColor: '#f87171' },
+  verdictCardOk: { backgroundColor: '#E8F5E9', borderColor: '#81C784' },
+  verdictCardInfo: { backgroundColor: '#fffbeb', borderColor: '#fbbf24' },
+  verdictRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  verdictEmoji: { marginTop: 2, width: 32, alignItems: 'center', justifyContent: 'center' },
+  verdictKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  verdictHeadline: { fontSize: 18, fontWeight: '800', lineHeight: 25, color: '#111827' },
+  verdictConfidence: { fontSize: 13, color: TEXT_MUTED },
+  technicalToggle: { paddingVertical: 4, gap: 6 },
+  technicalToggleHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  technicalToggleText: { fontSize: 15, fontWeight: '700', color: BRAND_ACCENT, flex: 1 },
+  technicalToggleHint: { fontSize: 12, color: TEXT_MUTED },
+  technicalBullets: {
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  technicalBullet: { fontSize: 12, color: TEXT_SECONDARY, lineHeight: 18 },
+  plateLabel: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 6 },
+  plateInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+  },
+  queueBtn: {
+    marginTop: 12,
+    backgroundColor: '#0057B8',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  queueBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  queueHint: { fontSize: 11, color: TEXT_MUTED, lineHeight: 16, marginTop: 10 },
+  badgesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  badge: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  badgeDanger: { backgroundColor: '#fff1f2', borderColor: '#fecdd3' },
+  badgeNeutral: { backgroundColor: '#f9fafb', borderColor: '#e5e7eb' },
+  badgeText: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  badgeTextDanger: { color: '#b91c1c' },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailIconSlot: { width: 22, alignItems: 'center', justifyContent: 'center' },
+  detailLabel: { fontSize: 13, color: TEXT_MUTED },
   detailValue: { fontSize: 13, fontWeight: '600', color: '#111827' },
   saveHint: {
     fontSize: 12,
-    color: '#6b7280',
+    color: TEXT_MUTED,
     lineHeight: 18,
     marginTop: 4,
     marginBottom: 8,
@@ -992,8 +1315,8 @@ const styles = StyleSheet.create({
   liveCameraHeaderSpacer: { width: 72 },
   liveCameraChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' },
   liveCameraChip: {
-    backgroundColor: 'rgba(37, 99, 235, 0.35)',
-    color: '#e0e7ff',
+    backgroundColor: 'rgba(0, 87, 184, 0.55)',
+    color: '#C8E4FF',
     fontSize: 12,
     fontWeight: '700',
     paddingHorizontal: 10,
@@ -1012,7 +1335,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   liveCameraStopBtn: {
-    backgroundColor: '#dc2626',
+    backgroundColor: '#D32F2F',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
@@ -1020,7 +1343,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   liveCameraStopTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  liveCameraSessionTxt: { color: '#6b7280', fontSize: 10, marginTop: 6, textAlign: 'center' },
+  liveCameraSessionTxt: { color: '#d1d5db', fontSize: 12, marginTop: 6, textAlign: 'center', lineHeight: 17 },
   liveCameraHint: { color: '#e5e7eb', textAlign: 'center', fontSize: 13, paddingHorizontal: 16, marginBottom: 8, lineHeight: 18 },
   liveCameraPreview: { flex: 1, width: '100%' },
 });

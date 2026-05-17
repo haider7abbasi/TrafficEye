@@ -4,95 +4,143 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  SafeAreaView,
-  StatusBar,
   ScrollView,
-  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import {
+  BRAND_HEADER_BG,
+  BRAND_HEADER_BG_DEEP,
+  BRAND_ON_PRIMARY_SUBTLE,
+  SURFACE_PANEL,
+  SURFACE_PANEL_BORDER,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+} from '../theme/brandColors';
+import {
+  ChevronRight,
+  Shield,
+  ShieldCheck,
+  UserCog,
+  UserPlus,
+} from 'lucide-react-native';
 
 type WelcomeNav = NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
 
-type RoleTileProps = {
+type PortalCardProps = {
   title: string;
   subtitle: string;
-  backgroundColor: string;
-  onSignIn: () => void;
-  tileStyle?: object;
+  icon: React.ReactNode;
+  iconBg: string;
+  accentColor: string;
+  onPress: () => void;
 };
 
-function RoleTile({ title, subtitle, backgroundColor, onSignIn, tileStyle }: RoleTileProps) {
+function PortalCard({ title, subtitle, icon, iconBg, accentColor, onPress }: PortalCardProps) {
   return (
-    <View style={[styles.tile, { backgroundColor }, tileStyle]}>
-      <View style={styles.tileTextBlock}>
-        <Text style={styles.tileTitle}>{title}</Text>
-        <Text style={styles.tileSubtitle}>{subtitle}</Text>
+    <Pressable
+      style={({ pressed }) => [styles.portalCard, pressed && styles.portalCardPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Sign in as ${title}`}>
+      <View style={[styles.portalIconWrap, { backgroundColor: iconBg }]}>
+        {icon}
       </View>
-      <Pressable
-        style={({ pressed }) => [styles.tileSignInBtn, pressed && styles.tileSignInBtnPressed]}
-        onPress={onSignIn}
-        accessibilityRole="button"
-        accessibilityLabel={`Sign in as ${title}`}>
-        <Text style={styles.tileSignInBtnText}>Sign In</Text>
-      </Pressable>
-    </View>
+      <View style={styles.portalTextCol}>
+        <Text style={styles.portalTitle}>{title}</Text>
+        <Text style={styles.portalSubtitle}>{subtitle}</Text>
+      </View>
+      <View style={[styles.portalAction, { borderColor: accentColor }]}>
+        <Text style={[styles.portalActionText, { color: accentColor }]}>Sign in</Text>
+        <ChevronRight size={18} color={accentColor} strokeWidth={2.5} />
+      </View>
+    </Pressable>
   );
 }
 
 export function WelcomeScreen() {
   const navigation = useNavigation<WelcomeNav>();
-  const { width } = useWindowDimensions();
-  const useSideBySide = width >= 360;
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+    <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         bounces>
-        <View style={styles.brandRow}>
-          <Text style={styles.brandIcon}>🛡️</Text>
-          <View>
-            <Text style={styles.brandTitle}>TrafficEye</Text>
-            <Text style={styles.brandSub}>Violation detection</Text>
+        <View style={styles.hero}>
+          <View style={styles.heroInner}>
+            <View style={styles.heroIconWrap}>
+              <Shield size={34} color={BRAND_HEADER_BG} strokeWidth={2.2} />
+            </View>
+            <View style={styles.heroTextCol}>
+              <Text style={styles.heroTitle}>Traffic Eye</Text>
+              <Text style={styles.heroTagline}>Smart traffic enforcement</Text>
+            </View>
           </View>
-        </View>
-
-        <Text style={styles.instructions}>Choose how you sign in</Text>
-
-        <View style={[styles.grid, useSideBySide ? styles.gridRow : styles.gridColumn]}>
-          <RoleTile
-            title="Officer"
-            subtitle="Scan scenes, review candidates, manage challans"
-            backgroundColor="#1e3a8a"
-            onSignIn={() => navigation.navigate('Login', { roleHint: 'officer' })}
-            tileStyle={useSideBySide ? styles.tileHalf : styles.tileFull}
-          />
-          <RoleTile
-            title="Admin"
-            subtitle="Approve officers, rules, and all-challan views"
-            backgroundColor="#475569"
-            onSignIn={() => navigation.navigate('Login', { roleHint: 'admin' })}
-            tileStyle={useSideBySide ? styles.tileHalf : styles.tileFull}
-          />
-        </View>
-
-        <View style={styles.newAccountCard}>
-          <Text style={styles.newAccountTitle}>New account</Text>
-          <Text style={styles.newAccountDesc}>
-            Register as an officer. An administrator must approve you before you can use the app.
+          <Text style={styles.heroLead}>
+            City Traffic Police — violation detection, candidate review, and digital challans in one
+            place.
           </Text>
+        </View>
+
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <Text style={styles.panelTitle}>Welcome</Text>
+            <Text style={styles.panelSubtitle}>Choose your portal to continue</Text>
+          </View>
+
+          <PortalCard
+            title="Officer"
+            subtitle="Capture evidence, review AI candidates, and issue challans"
+            icon={<ShieldCheck size={26} color={BRAND_HEADER_BG_DEEP} strokeWidth={2.2} />}
+            iconBg="#EAF4FF"
+            accentColor={BRAND_HEADER_BG_DEEP}
+            onPress={() => navigation.navigate('Login', { roleHint: 'officer' })}
+          />
+
+          <PortalCard
+            title="Administrator"
+            subtitle="Approve officers, manage rules, and oversee all challans"
+            icon={<UserCog size={26} color="#334155" strokeWidth={2.2} />}
+            iconBg="#f1f5f9"
+            accentColor="#334155"
+            onPress={() => navigation.navigate('Login', { roleHint: 'admin' })}
+          />
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>New officer</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.registerBlock}>
+            <View style={styles.registerIconWrap}>
+              <UserPlus size={22} color={BRAND_HEADER_BG_DEEP} strokeWidth={2.2} />
+            </View>
+            <View style={styles.registerTextCol}>
+              <Text style={styles.registerTitle}>Request officer access</Text>
+              <Text style={styles.registerDesc}>
+                Submit your work details for review. An administrator will approve your profile before you
+                can sign in and use enforcement features.
+              </Text>
+            </View>
+          </View>
+
           <Pressable
-            style={({ pressed }) => [styles.newAccountBtn, pressed && styles.newAccountBtnPressed]}
+            style={({ pressed }) => [styles.registerBtn, pressed && styles.registerBtnPressed]}
             onPress={() => navigation.navigate('Signup')}
             accessibilityRole="button"
-            accessibilityLabel="Create new account">
-            <Text style={styles.newAccountBtnText}>Create account</Text>
+            accessibilityLabel="Start officer registration">
+            <Text style={styles.registerBtnText}>Start registration</Text>
           </Pressable>
         </View>
+
+        <Text style={styles.footNote}>Authorized personnel only · Secure sign-in required</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -101,131 +149,208 @@ export function WelcomeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: 'transparent',
   },
   scroll: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+    paddingTop: 8,
     flexGrow: 1,
   },
-  brandRow: {
+  hero: {
+    backgroundColor: BRAND_HEADER_BG,
+    borderRadius: 18,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    shadowColor: BRAND_HEADER_BG_DEEP,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  heroInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 20,
-    marginTop: 8,
-  },
-  brandIcon: { fontSize: 36 },
-  brandTitle: { fontSize: 22, fontWeight: '800', color: '#0f172a' },
-  brandSub: { fontSize: 13, color: '#64748b', marginTop: 2 },
-  instructions: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#334155',
+    gap: 14,
     marginBottom: 14,
   },
-  grid: {
-    gap: 12,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  gridColumn: {
-    flexDirection: 'column',
-  },
-  tile: {
-    borderRadius: 4,
-    paddingVertical: 28,
-    paddingHorizontal: 16,
-    justifyContent: 'space-between',
-    minHeight: 168,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  tileHalf: {
-    flex: 1,
-  },
-  tileFull: {
-    width: '100%',
-  },
-  tileTextBlock: {
+  heroIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
-    marginBottom: 20,
-    gap: 8,
+    justifyContent: 'center',
   },
-  tileTitle: {
-    color: '#fff',
+  heroTextCol: { flex: 1 },
+  heroTitle: {
+    color: '#ffffff',
     fontSize: 28,
     fontWeight: '800',
-    textAlign: 'center',
+    letterSpacing: 0.3,
   },
-  tileSubtitle: {
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 17,
-    paddingHorizontal: 4,
+  heroTagline: {
+    color: BRAND_ON_PRIMARY_SUBTLE,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
   },
-  tileSignInBtn: {
-    alignSelf: 'center',
-    backgroundColor: '#fff',
-    paddingHorizontal: 36,
-    paddingVertical: 12,
-    borderRadius: 6,
-    minWidth: 160,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  tileSignInBtnPressed: {
-    opacity: 0.92,
-  },
-  tileSignInBtnText: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  newAccountCard: {
-    marginTop: 20,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  newAccountTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0f172a',
-    marginBottom: 8,
-  },
-  newAccountDesc: {
+  heroLead: {
+    color: 'rgba(255,255,255,0.92)',
     fontSize: 13,
-    color: '#64748b',
     lineHeight: 19,
+    fontWeight: '500',
+  },
+  panel: {
+    backgroundColor: SURFACE_PANEL,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: SURFACE_PANEL_BORDER,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 22,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  panelHeader: {
+    marginBottom: 18,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: SURFACE_PANEL_BORDER,
+  },
+  panelTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    letterSpacing: 0.2,
+  },
+  panelSubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: TEXT_MUTED,
+    lineHeight: 20,
+  },
+  portalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: SURFACE_PANEL_BORDER,
+    backgroundColor: '#f8fafc',
+    marginBottom: 12,
+  },
+  portalCardPressed: {
+    opacity: 0.92,
+    backgroundColor: '#f1f5f9',
+  },
+  portalIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  portalTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  portalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    marginBottom: 3,
+  },
+  portalSubtitle: {
+    fontSize: 12,
+    color: TEXT_SECONDARY,
+    lineHeight: 17,
+  },
+  portalAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingLeft: 4,
+  },
+  portalActionText: {
+    fontSize: 13,
+    fontWeight: 800,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginVertical: 6,
     marginBottom: 16,
   },
-  newAccountBtn: {
-    backgroundColor: '#0d9488',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: SURFACE_PANEL_BORDER,
   },
-  newAccountBtnPressed: { opacity: 0.9 },
-  newAccountBtnText: {
-    color: '#fff',
-    fontSize: 16,
+  dividerText: {
+    fontSize: 12,
     fontWeight: '700',
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  registerBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
+  },
+  registerIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EAF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  registerTextCol: { flex: 1 },
+  registerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: TEXT_PRIMARY,
+    marginBottom: 4,
+  },
+  registerDesc: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    lineHeight: 17,
+  },
+  registerBtn: {
+    backgroundColor: BRAND_HEADER_BG,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: 'center',
+    shadowColor: BRAND_HEADER_BG_DEEP,
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  registerBtnPressed: { opacity: 0.9 },
+  registerBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  footNote: {
+    marginTop: 18,
+    textAlign: 'center',
+    fontSize: 11,
+    color: TEXT_MUTED,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });

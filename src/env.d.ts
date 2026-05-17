@@ -1,3 +1,8 @@
+declare module '*.png' {
+  const value: number;
+  export default value;
+}
+
 declare module '@env' {
   /** Set to "true" only for local Firebase Emulator Suite */
   export const USE_FIREBASE_EMULATOR: string;
@@ -17,9 +22,11 @@ declare module '@env' {
   export const ROBOFLOW_PROJECT_NUMBER_PLATE: string;
   export const ROBOFLOW_PROJECT_MOBILE_PHONE: string;
   export const ROBOFLOW_PROJECT_BIKE_HELMET: string;
+  export const ROBOFLOW_PROJECT_VEHICLE: string;
   /** Hosted URL version segment per project (numeric string; defaults to "1" in code if unset) */
   export const ROBOFLOW_VERSION_SEATBELT: string;
   export const ROBOFLOW_VERSION_NUMBER_PLATE: string;
   export const ROBOFLOW_VERSION_MOBILE_PHONE: string;
   export const ROBOFLOW_VERSION_BIKE_HELMET: string;
+  export const ROBOFLOW_VERSION_VEHICLE: string;
 }

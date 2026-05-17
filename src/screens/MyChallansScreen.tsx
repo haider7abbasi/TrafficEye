@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList } from 'react-native';
+import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { CHALLANS_COLLECTION } from '../config/collections';
@@ -70,11 +71,7 @@ export function MyChallansScreen() {
   }, []);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ScreenLoadingCenter message="Loading your challans…" />;
   }
 
   return (
@@ -112,8 +109,8 @@ export function MyChallansScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6', padding: 14 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent', padding: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   heading: { fontSize: 20, fontWeight: '800', color: '#111827' },
   subtle: { color: '#6b7280', marginTop: 2 },
   empty: { marginTop: 16, color: '#6b7280' },

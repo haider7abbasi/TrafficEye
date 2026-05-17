@@ -4,9 +4,14 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+import firestore, {
+  FirebaseFirestoreTypes,
+  increment,
+  serverTimestamp,
+} from '@react-native-firebase/firestore';
 import type { UploadedStorageObject } from '../services/storageEvidence';
 import {
   CANDIDATES_COLLECTION,
@@ -84,6 +89,8 @@ type AppContextType = {
     plateCropRef?: string;
     plateBox?: { x: number; y: number; width: number; height: number; confidence: number };
     locationText?: string;
+    vehiclePlateDisplay?: string;
+    vehiclePlateCanonical?: string;
   }) => Promise<void>;
   createIntakeSession: (mode: 'still' | 'upload' | 'video' | 'live') => Promise<string>;
   getStorageUrl: (objectPath: string) => Promise<string>;
@@ -163,12 +170,35 @@ async function ensureUserProfile(fbUser: FirebaseAuthTypes.User): Promise<User> 
   return mapUserProfile(snap.data(), fbUser);
 }
 
+/** Keep auth overlay visible until the navigator can switch stacks. */
+function settleUiAfterAuth(): Promise<void> {
+  return new Promise(resolve => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 280);
+      });
+    });
+  });
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [records, setRecords] = useState<ViolationRecord[]>([]);
   const [authReady, setAuthReady] = useState(false);
+  const userRef = useRef<User | null>(null);
+  const sessionWaitersRef = useRef<Array<(profile: User) => void>>([]);
   const hasSession = !!user;
   const hasAccess = !!user && (user.role === 'admin' || user.approved);
+
+  userRef.current = user;
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const waiters = sessionWaitersRef.current.splice(0);
+    waiters.forEach(fn => fn(user));
+  }, [user]);
 
   useEffect(() => {
     let unsubViolations: (() => void) | undefined;
@@ -240,34 +270,77 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    await auth().signInWithEmailAndPassword(email.trim().toLowerCase(), password);
+  const waitForUserProfileInState = useCallback((timeoutMs = 20000): Promise<User> => {
+    if (userRef.current) {
+      return Promise.resolve(userRef.current);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Could not load your profile. Please try again.'));
+      }, timeoutMs);
+      sessionWaitersRef.current.push(profile => {
+        clearTimeout(timer);
+        resolve(profile);
+      });
+    });
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
-    const cleanName = name.trim();
-    const cleanEmail = email.trim().toLowerCase();
-    const cred = await auth().createUserWithEmailAndPassword(cleanEmail, password);
-    if (cleanName) {
-      await cred.user.updateProfile({ displayName: cleanName });
+  const hydrateSessionProfile = useCallback(async (fbUser: FirebaseAuthTypes.User): Promise<User> => {
+    if (userRef.current) {
+      return userRef.current;
     }
-    await firestore()
-      .collection(USERS_COLLECTION)
-      .doc(cred.user.uid)
-      .set(
-        {
-          name: cleanName || cleanEmail.split('@')[0] || 'Officer',
-          email: cleanEmail,
-          role: 'officer',
-          approved: false,
-          phone: '',
-          department: 'Traffic Enforcement',
-          location: '',
-          badgeNumber: '',
-        },
-        { merge: true },
-      );
+    const profile = await ensureUserProfile(fbUser);
+    userRef.current = profile;
+    setUser(profile);
+    const waiters = sessionWaitersRef.current.splice(0);
+    waiters.forEach(fn => fn(profile));
+    return profile;
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      await auth().signInWithEmailAndPassword(email.trim().toLowerCase(), password);
+      const fbUser = auth().currentUser;
+      if (!fbUser) {
+        throw new Error('Sign-in failed. Please try again.');
+      }
+      await hydrateSessionProfile(fbUser);
+      await waitForUserProfileInState();
+      await settleUiAfterAuth();
+    },
+    [hydrateSessionProfile, waitForUserProfileInState],
+  );
+
+  const register = useCallback(
+    async (name: string, email: string, password: string) => {
+      const cleanName = name.trim();
+      const cleanEmail = email.trim().toLowerCase();
+      const cred = await auth().createUserWithEmailAndPassword(cleanEmail, password);
+      if (cleanName) {
+        await cred.user.updateProfile({ displayName: cleanName });
+      }
+      await firestore()
+        .collection(USERS_COLLECTION)
+        .doc(cred.user.uid)
+        .set(
+          {
+            name: cleanName || cleanEmail.split('@')[0] || 'Officer',
+            email: cleanEmail,
+            role: 'officer',
+            approved: false,
+            phone: '',
+            department: 'Traffic Enforcement',
+            location: '',
+            badgeNumber: '',
+          },
+          { merge: true },
+        );
+      await hydrateSessionProfile(cred.user);
+      await waitForUserProfileInState();
+      await settleUiAfterAuth();
+    },
+    [hydrateSessionProfile, waitForUserProfileInState],
+  );
 
   const logout = useCallback(async () => {
     await auth().signOut();
@@ -384,6 +457,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       plateCropRef?: string;
       plateBox?: { x: number; y: number; width: number; height: number; confidence: number };
       locationText?: string;
+      vehiclePlateDisplay?: string;
+      vehiclePlateCanonical?: string;
     }) => {
       const uid = auth().currentUser?.uid;
       if (!uid) {
@@ -401,13 +476,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         plateBox: input.plateBox ?? null,
         locationText: input.locationText ?? null,
         status: 'pending_review',
-        updatedAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
+      const display = input.vehiclePlateDisplay?.trim();
+      if (display) {
+        payload.vehiclePlateDisplay = display;
+        payload.vehiclePlateCanonical =
+          input.vehiclePlateCanonical?.trim() || display;
+      }
       if (input.dedupDecision === 'merge') {
-        payload.mergedAt = firestore.FieldValue.serverTimestamp();
-        payload.mergeCount = firestore.FieldValue.increment(1);
+        payload.mergedAt = serverTimestamp();
+        payload.mergeCount = increment(1);
       } else {
-        payload.createdAt = firestore.FieldValue.serverTimestamp();
+        payload.createdAt = serverTimestamp();
       }
       await firestore().collection(CANDIDATES_COLLECTION).doc(input.candidateId).set(payload, { merge: true });
     },
@@ -424,7 +505,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await ref.set({
         officerId: uid,
         mode,
-        startedAt: firestore.FieldValue.serverTimestamp(),
+        startedAt: serverTimestamp(),
       });
       return ref.id;
     },

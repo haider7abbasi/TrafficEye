@@ -7,23 +7,27 @@
  * - np-recognization → v1
  * - mobile_phone_detection-hhrf7 → v2
  * - bike-helmet-sbg4b-kwudk → v2
+ * - vehicles-k83q3-iighp → v1 (scene / vehicle-type context)
  */
 import {
   ROBOFLOW_PROJECT_BIKE_HELMET,
   ROBOFLOW_PROJECT_MOBILE_PHONE,
   ROBOFLOW_PROJECT_NUMBER_PLATE,
   ROBOFLOW_PROJECT_SEATBELT,
+  ROBOFLOW_PROJECT_VEHICLE,
   ROBOFLOW_VERSION_BIKE_HELMET,
   ROBOFLOW_VERSION_MOBILE_PHONE,
   ROBOFLOW_VERSION_NUMBER_PLATE,
   ROBOFLOW_VERSION_SEATBELT,
+  ROBOFLOW_VERSION_VEHICLE,
 } from '@env';
 
 export type RoboflowTrafficProject =
   | 'seatbelt'
   | 'number_plate'
   | 'mobile_phone'
-  | 'bike_helmet';
+  | 'bike_helmet'
+  | 'vehicle';
 
 /** Strip optional leading "v"; must be digits for hosted REST path segment. */
 export function normalizeRoboflowModelVersion(raw: string | undefined, envKey: string): string {
@@ -52,6 +56,11 @@ export type RoboflowDeployConfig = {
   version: string;
 };
 
+/** Hosted detect URL (no API key) — must match Roboflow Deploy → Inference. */
+export function buildRoboflowDetectUrl(projectId: string, version: string): string {
+  return `https://detect.roboflow.com/${encodeURIComponent(projectId)}/${encodeURIComponent(version)}`;
+}
+
 /** Resolved `{project_id}/{version}` inputs for `detect.roboflow.com` — always from env. */
 export function getRoboflowDeployConfig(project: RoboflowTrafficProject): RoboflowDeployConfig {
   switch (project) {
@@ -79,10 +88,28 @@ export function getRoboflowDeployConfig(project: RoboflowTrafficProject): Robofl
         projectId: (ROBOFLOW_PROJECT_BIKE_HELMET ?? '').trim(),
         version: normalizeRoboflowModelVersion(ROBOFLOW_VERSION_BIKE_HELMET, 'ROBOFLOW_VERSION_BIKE_HELMET'),
       };
+    case 'vehicle': {
+      const vehicleId = (ROBOFLOW_PROJECT_VEHICLE ?? '').trim();
+      return {
+        project,
+        /** Default matches bundled TrafficEye vehicle deploy when env not set. */
+        projectId: vehicleId || 'vehicles-k83q3-iighp',
+        version: normalizeRoboflowModelVersion(
+          ROBOFLOW_VERSION_VEHICLE ?? '1',
+          'ROBOFLOW_VERSION_VEHICLE',
+        ),
+      };
+    }
   }
 }
 
-const ALL_PROJECTS: RoboflowTrafficProject[] = ['seatbelt', 'number_plate', 'mobile_phone', 'bike_helmet'];
+const ALL_PROJECTS: RoboflowTrafficProject[] = [
+  'seatbelt',
+  'number_plate',
+  'mobile_phone',
+  'bike_helmet',
+  'vehicle',
+];
 
 /** Snapshot for settings / debug UI (no API keys). */
 export function getRoboflowDeployRegistry(): Record<RoboflowTrafficProject, { projectId: string; version: string }> {

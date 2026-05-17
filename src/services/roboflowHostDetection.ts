@@ -6,7 +6,11 @@
  */
 import axios from 'axios';
 import { ROBOFLOW_API_KEY } from '@env';
-import { getRoboflowDeployConfig, type RoboflowTrafficProject } from '../config/roboflowModels';
+import {
+  buildRoboflowDetectUrl,
+  getRoboflowDeployConfig,
+  type RoboflowTrafficProject,
+} from '../config/roboflowModels';
 
 export type { RoboflowTrafficProject } from '../config/roboflowModels';
 
@@ -43,9 +47,16 @@ export type RoboflowDetectParams = {
   imageUri: string;
   mimeType?: string;
   fileName?: string;
+  /** App threshold 0–1; sent to Roboflow as `confidence` query param (0–100). */
+  confidenceThreshold?: number;
   timeoutMs?: number;
   maxRetries?: number;
 };
+
+/** Roboflow `confidence` query param expects 0–100. */
+function toRoboflowApiConfidence(threshold01: number): number {
+  return Math.round(Math.max(0, Math.min(1, threshold01)) * 100);
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -85,16 +96,22 @@ export async function runRoboflowHostDetection(
     throw new Error(`Roboflow project id missing for "${params.project}" in @env.`);
   }
 
-  const url = `https://detect.roboflow.com/${encodeURIComponent(projectId)}/${encodeURIComponent(version)}`;
+  const url = buildRoboflowDetectUrl(projectId, version);
 
   const mimeType = params.mimeType ?? 'image/jpeg';
   const fileName = params.fileName ?? 'frame.jpg';
   const timeoutMs = params.timeoutMs ?? 60_000;
+  const queryParams: Record<string, string> = { api_key: apiKey };
+  if (typeof params.confidenceThreshold === 'number') {
+    queryParams.confidence = String(toRoboflowApiConfidence(params.confidenceThreshold));
+  }
 
   rfDebug('request', {
     project: params.project,
     projectId,
     version,
+    endpoint: url,
+    confidenceQuery: queryParams.confidence ?? '(default)',
     uriKind: uriKind(params.imageUri),
     mimeType,
     fileName,
@@ -114,7 +131,7 @@ export async function runRoboflowHostDetection(
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
       const { data } = await axios.post<unknown>(url, form, {
-        params: { api_key: apiKey },
+        params: queryParams,
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: timeoutMs,
       });

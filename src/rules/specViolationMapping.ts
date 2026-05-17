@@ -67,13 +67,37 @@ export const ROBOFLOW_CLASS_SPEC_SHEET: readonly {
     roboflowClass: PHONE_HAND_ONLY_CLASS,
     specViolationId: null,
     role: 'context',
-    note: 'Never triggers a challan by itself.',
+    note: 'Does not trigger on car; on motorcycle context it can trigger mobile_phone_use with bike rules.',
   },
   {
     roboflowClass: '(number plate model)',
     specViolationId: null,
     role: 'plate_detection',
     note: 'Bounding box only; officer enters plate text (Option 1).',
+  },
+  {
+    roboflowClass: 'Bus',
+    specViolationId: null,
+    role: 'context',
+    note: 'Vehicle model: car-like context (see VEHICLE_MODEL_CARISH_CLASSES).',
+  },
+  {
+    roboflowClass: 'car',
+    specViolationId: null,
+    role: 'context',
+    note: 'Vehicle model: car-like context.',
+  },
+  {
+    roboflowClass: 'truck',
+    specViolationId: null,
+    role: 'context',
+    note: 'Vehicle model: car-like context.',
+  },
+  {
+    roboflowClass: 'Motorcycle',
+    specViolationId: null,
+    role: 'context',
+    note: 'Vehicle model: bike-like context (see VEHICLE_MODEL_BIKEISH_CLASSES).',
   },
 ];
 

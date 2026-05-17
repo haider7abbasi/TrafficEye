@@ -2,17 +2,33 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { Shield } from 'lucide-react-native';
+import {
+  BG_LIGHT_BLUE,
+  BRAND_HEADER_BG,
+  SURFACE_PANEL,
+  SURFACE_PANEL_BORDER,
+  TEXT_MUTED,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+  TRAFFIC_GOLD,
+} from '../theme/brandColors';
 
 export function PendingApprovalScreen() {
   const { user, logout } = useApp();
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
+      <StatusBar barStyle="light-content" backgroundColor={BRAND_HEADER_BG} />
       <View style={styles.inner}>
         <View style={styles.card}>
-          <Text style={styles.icon}>⏳</Text>
-          <Text style={styles.title}>Waiting for approval</Text>
+          <View style={styles.iconWrap} accessibilityLabel="Pending approval">
+            <Shield size={28} color={BRAND_HEADER_BG} strokeWidth={2.2} />
+          </View>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusPillText}>Pending administrator review</Text>
+          </View>
+          <Text style={styles.title}>Access not yet active</Text>
           <Text style={styles.message}>
             We created an account for <Text style={styles.emailEmphasis}>{user?.email ?? 'this email'}</Text>.
             {'\n\n'}
@@ -35,7 +51,7 @@ export function PendingApprovalScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#2563eb',
+    backgroundColor: 'transparent',
   },
   inner: {
     flex: 1,
@@ -46,19 +62,44 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#fff',
+    backgroundColor: SURFACE_PANEL,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: SURFACE_PANEL_BORDER,
     padding: 24,
     alignItems: 'center',
     gap: 12,
   },
-  icon: { fontSize: 40 },
-  title: { fontSize: 22, fontWeight: '800', color: '#111827', textAlign: 'center' },
-  message: { color: '#4b5563', textAlign: 'center', lineHeight: 22, fontSize: 15 },
-  emailEmphasis: { fontWeight: '700', color: '#111827' },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: BG_LIGHT_BLUE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  statusPill: {
+    backgroundColor: 'rgba(244, 180, 0, 0.15)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: TRAFFIC_GOLD,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#8A6D00',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  title: { fontSize: 22, fontWeight: '800', color: TEXT_PRIMARY, textAlign: 'center' },
+  message: { color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 22, fontSize: 15 },
+  emailEmphasis: { fontWeight: '700', color: TEXT_PRIMARY },
   logoutBtn: {
     marginTop: 8,
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_HEADER_BG,
     borderRadius: 10,
     paddingHorizontal: 20,
     paddingVertical: 14,

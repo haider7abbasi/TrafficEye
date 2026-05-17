@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { StatusBar, StyleSheet } from 'react-native';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -8,25 +8,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getApp } from '@react-native-firebase/app';
 import { waitForNativeFirebaseReady } from './utils/waitForNativeFirebase';
 import { AppProvider, useApp } from './context/AppContext';
+import { LoadingProvider } from './context/LoadingContext';
 import { RootNavigator } from './navigation/RootNavigator';
 import { persistor, store } from './store';
+import { TrafficEyeSplashScreen } from './components/TrafficEyeSplashScreen';
+import { BRAND_HEADER_BG } from './theme/brandColors';
 
 function AuthSplash() {
-  return (
-    <View style={styles.splash} accessibilityLabel="Loading account">
-      <ActivityIndicator size="large" color="#ffffff" />
-      <Text style={styles.splashText}>Checking your session…</Text>
-    </View>
-  );
+  return <TrafficEyeSplashScreen message="Checking your session…" />;
 }
 
 function PersistLoading() {
-  return (
-    <View style={styles.splash} accessibilityLabel="Restoring saved preferences">
-      <ActivityIndicator size="large" color="#ffffff" />
-      <Text style={styles.splashText}>Restoring your settings…</Text>
-    </View>
-  );
+  return <TrafficEyeSplashScreen message="Preparing Traffic Eye…" />;
 }
 
 /**
@@ -79,8 +72,10 @@ export default function App() {
         <Provider store={store}>
           <PersistGate loading={<PersistLoading />} persistor={persistor}>
             <AppProvider>
-              <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
-              <AppNavigationShell />
+              <LoadingProvider>
+                <StatusBar barStyle="light-content" backgroundColor={BRAND_HEADER_BG} />
+                <AppNavigationShell />
+              </LoadingProvider>
             </AppProvider>
           </PersistGate>
         </Provider>
@@ -90,19 +85,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
-  splash: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2563eb',
-    gap: 16,
-  },
-  splashText: {
-    color: '#e0e7ff',
-    fontSize: 15,
-    fontWeight: '600',
-    textAlign: 'center',
-    paddingHorizontal: 32,
-  },
+  root: { flex: 1, backgroundColor: 'transparent' },
 });

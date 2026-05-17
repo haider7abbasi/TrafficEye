@@ -4,14 +4,15 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  ActivityIndicator,
   TextInput,
   Pressable,
   Alert,
 } from 'react-native';
-import firestore from '@react-native-firebase/firestore';
+import firestore, { serverTimestamp } from '@react-native-firebase/firestore';
 import { TRAFFIC_RULES_COLLECTION } from '../config/collections';
+import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import { useApp } from '../context/AppContext';
+import { useLoading } from '../context/LoadingContext';
 
 type TrafficRule = {
   id: string;
@@ -22,6 +23,7 @@ type TrafficRule = {
 
 export function ManageRulesScreen() {
   const { user } = useApp();
+  const { runWithLoading } = useLoading();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<TrafficRule[]>([]);
   const [title, setTitle] = useState('');
@@ -109,12 +111,13 @@ export function ManageRulesScreen() {
     }
     setSaving(true);
     try {
+      await runWithLoading(async () => {
       if (editingId) {
         await firestore().collection(TRAFFIC_RULES_COLLECTION).doc(editingId).set(
           {
             title: validated.title,
             details: validated.details,
-            updatedAt: firestore.FieldValue.serverTimestamp(),
+            updatedAt: serverTimestamp(),
           },
           { merge: true },
         );
@@ -123,10 +126,11 @@ export function ManageRulesScreen() {
           title: validated.title,
           details: validated.details,
           active: true,
-          updatedAt: firestore.FieldValue.serverTimestamp(),
+          updatedAt: serverTimestamp(),
         });
       }
       clearForm();
+      }, editingId ? 'Updating rule…' : 'Saving rule…');
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to save rule.';
       Alert.alert('Save failed', message);
@@ -140,7 +144,7 @@ export function ManageRulesScreen() {
       await firestore().collection(TRAFFIC_RULES_COLLECTION).doc(item.id).set(
         {
           active: !item.active,
-          updatedAt: firestore.FieldValue.serverTimestamp(),
+          updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
@@ -181,11 +185,7 @@ export function ManageRulesScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ScreenLoadingCenter message="Loading rules…" />;
   }
 
   return (
@@ -260,8 +260,8 @@ export function ManageRulesScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6', padding: 14 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent', padding: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   heading: { fontSize: 20, fontWeight: '800', color: '#111827' },
   title: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
   subtle: { color: '#6b7280', marginTop: 2 },
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   saveBtn: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#0057B8',
     borderRadius: 8,
     alignItems: 'center',
     paddingVertical: 10,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  activeBtn: { backgroundColor: '#16a34a' },
+  activeBtn: { backgroundColor: '#0057B8' },
   inactiveBtn: { backgroundColor: '#6b7280' },
   toggleText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   editBtn: {

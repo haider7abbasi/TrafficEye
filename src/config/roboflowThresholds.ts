@@ -7,6 +7,11 @@ export const ROBOFLOW_MODEL_THRESHOLDS = {
   bike_helmet: 0.5,
   mobile_phone: 0.5,
   number_plate: 0.5,
+  /**
+   * Vehicle-type detector: car/bike scene gate only (see violationProcessingFlow).
+   * Slightly below specialist defaults so marginal vehicle boxes still establish context when parsing succeeds.
+   */
+  vehicle: 0.42,
 } as const;
 
 /**

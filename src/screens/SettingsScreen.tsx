@@ -9,6 +9,19 @@ import {
   Alert,
 } from 'react-native';
 import {
+  Bell,
+  Camera,
+  Eye,
+  Globe,
+  HardDrive,
+  Lock,
+  Moon,
+  Search,
+  Smartphone,
+  Sun,
+  Volume2,
+} from 'lucide-react-native';
+import {
   persistor,
   useReduxDispatch,
   useReduxSelector,
@@ -24,9 +37,13 @@ import {
   type CameraQualityOption,
   type LanguageOption,
 } from '../store';
+import { BRAND_HEADER_BG, TEXT_MUTED, TEXT_PRIMARY } from '../theme/brandColors';
+
+const ICON = 20;
+const ICON_COLOR = '#64748b';
 
 type SettingRowProps = {
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   subtitle?: string;
   value: boolean;
@@ -37,17 +54,17 @@ type SettingRowProps = {
 function SettingRow({ icon, title, subtitle, value, onChange, disabled }: SettingRowProps) {
   return (
     <View style={rowStyles.row}>
-      <Text style={rowStyles.icon}>{icon}</Text>
+      <View style={rowStyles.iconSlot}>{icon}</View>
       <View style={rowStyles.info}>
         <Text style={rowStyles.title}>{title}</Text>
-        {subtitle && <Text style={rowStyles.subtitle}>{subtitle}</Text>}
+        {subtitle ? <Text style={rowStyles.subtitle}>{subtitle}</Text> : null}
       </View>
       <Switch
         value={value}
         onValueChange={onChange}
         disabled={disabled}
-        trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
-        thumbColor={value ? '#2563eb' : '#9ca3af'}
+        trackColor={{ false: '#d1d5db', true: '#A8D4FF' }}
+        thumbColor={value ? BRAND_HEADER_BG : '#9ca3af'}
       />
     </View>
   );
@@ -62,10 +79,10 @@ const rowStyles = StyleSheet.create({
     borderTopColor: '#f3f4f6',
     gap: 12,
   },
-  icon: { fontSize: 18, width: 28, textAlign: 'center' },
+  iconSlot: { width: 28, alignItems: 'center', justifyContent: 'center' },
   info: { flex: 1 },
-  title: { fontSize: 14, fontWeight: '500', color: '#111827' },
-  subtitle: { fontSize: 12, color: '#9ca3af', marginTop: 1 },
+  title: { fontSize: 14, fontWeight: '500', color: TEXT_PRIMARY },
+  subtitle: { fontSize: 12, color: TEXT_MUTED, marginTop: 1 },
 });
 
 const QUALITIES: CameraQualityOption[] = [
@@ -112,31 +129,31 @@ export function SettingsScreen() {
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Text style={styles.sectionIcon}>🔔</Text>
+          <Bell size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
             <Text style={styles.cardTitle}>Notifications</Text>
-            <Text style={styles.cardSub}>Manage your notification preferences</Text>
+            <Text style={styles.cardSub}>Local preference flags</Text>
           </View>
         </View>
         <SettingRow
-          icon="🔔"
-          title="Enable Notifications"
-          subtitle="Receive alerts for violations"
+          icon={<Bell size={18} color={ICON_COLOR} strokeWidth={2} />}
+          title="Enable notifications"
+          subtitle="When supported by a future build"
           value={s.notificationsEnabled}
           onChange={v => dispatch(setNotificationsEnabled(v))}
         />
         <SettingRow
-          icon="🔊"
+          icon={<Volume2 size={18} color={ICON_COLOR} strokeWidth={2} />}
           title="Sound"
-          subtitle="Play notification sounds"
+          subtitle="With notifications"
           value={s.soundEnabled}
           onChange={v => dispatch(setSoundEnabled(v))}
           disabled={!s.notificationsEnabled}
         />
         <SettingRow
-          icon="📳"
+          icon={<Smartphone size={18} color={ICON_COLOR} strokeWidth={2} />}
           title="Vibration"
-          subtitle="Vibrate on notifications"
+          subtitle="With notifications"
           value={s.vibrationEnabled}
           onChange={v => dispatch(setVibrationEnabled(v))}
           disabled={!s.notificationsEnabled}
@@ -145,21 +162,30 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Text style={styles.sectionIcon}>👁</Text>
+          <Eye size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
             <Text style={styles.cardTitle}>Appearance</Text>
-            <Text style={styles.cardSub}>Customize the app appearance</Text>
+            <Text style={styles.cardSub}>Theme preference</Text>
           </View>
         </View>
         <SettingRow
-          icon={s.darkMode ? '🌙' : '☀️'}
-          title="Dark Mode"
-          subtitle="Use dark theme (UI wiring can follow this flag)"
+          icon={
+            s.darkMode ? (
+              <Moon size={18} color={ICON_COLOR} strokeWidth={2} />
+            ) : (
+              <Sun size={18} color={ICON_COLOR} strokeWidth={2} />
+            )
+          }
+          title="Dark mode"
+          subtitle="Reserved for a future themed UI"
           value={s.darkMode}
           onChange={v => dispatch(setDarkMode(v))}
         />
         <View style={styles.selectorWrap}>
-          <Text style={styles.selectorLabel}>🌐 Language</Text>
+          <View style={styles.selectorLabelRow}>
+            <Globe size={16} color={ICON_COLOR} strokeWidth={2} />
+            <Text style={styles.selectorLabel}>Language</Text>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll}>
             {LANGUAGES.map(l => (
               <Pressable
@@ -175,14 +201,14 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Text style={styles.sectionIcon}>📷</Text>
+          <Camera size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
             <Text style={styles.cardTitle}>Camera</Text>
-            <Text style={styles.cardSub}>Configure camera settings</Text>
+            <Text style={styles.cardSub}>Capture quality</Text>
           </View>
         </View>
         <View style={styles.selectorWrap}>
-          <Text style={styles.selectorLabel}>Camera Quality</Text>
+          <Text style={styles.selectorLabel}>Quality preset</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll}>
             {QUALITIES.map(q => (
               <Pressable
@@ -195,9 +221,9 @@ export function SettingsScreen() {
           </ScrollView>
         </View>
         <SettingRow
-          icon="💾"
-          title="Auto-save Photos"
-          subtitle="Automatically save captured images (policy placeholder)"
+          icon={<HardDrive size={18} color={ICON_COLOR} strokeWidth={2} />}
+          title="Auto-save photos"
+          subtitle="Device storage only; follow department policy"
           value={s.autoSavePhotos}
           onChange={v => dispatch(setAutoSavePhotos(v))}
         />
@@ -205,17 +231,15 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Text style={styles.sectionIcon}>🔍</Text>
+          <Search size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
             <Text style={styles.cardTitle}>Detection</Text>
-            <Text style={styles.cardSub}>
-              UI preference only — Roboflow thresholds still come from env / server policy.
-            </Text>
+            <Text style={styles.cardSub}>Display threshold; server rules still apply</Text>
           </View>
         </View>
         <View style={styles.sliderWrap}>
           <View style={styles.sliderLabelRow}>
-            <Text style={styles.sliderLabel}>Confidence Threshold</Text>
+            <Text style={styles.sliderLabel}>Confidence display</Text>
             <Text style={styles.sliderValue}>{s.detectionConfidence}%</Text>
           </View>
           <View style={styles.sliderTrack}>
@@ -224,19 +248,13 @@ export function SettingsScreen() {
           <View style={styles.sliderBtns}>
             <Pressable
               style={styles.sliderBtn}
-              onPress={() =>
-                dispatch(setDetectionConfidence(s.detectionConfidence - 5))
-              }>
+              onPress={() => dispatch(setDetectionConfidence(s.detectionConfidence - 5))}>
               <Text style={styles.sliderBtnTxt}>−</Text>
             </Pressable>
-            <Text style={styles.sliderHint}>
-              Only flag violations above {s.detectionConfidence}% confidence
-            </Text>
+            <Text style={styles.sliderHint}>Highlight above {s.detectionConfidence}% in the UI</Text>
             <Pressable
               style={styles.sliderBtn}
-              onPress={() =>
-                dispatch(setDetectionConfidence(s.detectionConfidence + 5))
-              }>
+              onPress={() => dispatch(setDetectionConfidence(s.detectionConfidence + 5))}>
               <Text style={styles.sliderBtnTxt}>+</Text>
             </Pressable>
           </View>
@@ -245,17 +263,12 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Text style={styles.sectionIcon}>🔒</Text>
+          <Lock size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
-            <Text style={styles.cardTitle}>Privacy & Security</Text>
-            <Text style={styles.cardSub}>Manage your privacy settings</Text>
+            <Text style={styles.cardTitle}>Privacy</Text>
+            <Text style={styles.cardSub}>Local data on this device</Text>
           </View>
         </View>
-        {['Change Password', 'Two-Factor Authentication'].map(label => (
-          <Pressable key={label} style={styles.outlineBtn}>
-            <Text style={styles.outlineBtnTxt}>{label}</Text>
-          </Pressable>
-        ))}
         <Pressable style={[styles.outlineBtn, styles.dangerBtn]} onPress={onClearLocalPreferences}>
           <Text style={styles.dangerBtnTxt}>Clear local preferences</Text>
         </Pressable>
@@ -269,8 +282,8 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6' },
-  content: { padding: 14, gap: 14, paddingBottom: 30 },
+  root: { flex: 1, backgroundColor: 'transparent' },
+  content: { padding: 16, gap: 14, paddingBottom: 32 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -280,10 +293,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  sectionIcon: { fontSize: 20 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  cardSub: { fontSize: 12, color: '#9ca3af' },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  cardSub: { fontSize: 12, color: TEXT_MUTED },
   selectorWrap: { paddingVertical: 8, gap: 8 },
+  selectorLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   selectorLabel: { fontSize: 13, fontWeight: '500', color: '#374151' },
   pillScroll: { flexGrow: 0 },
   pill: {
@@ -295,31 +308,31 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#f9fafb',
   },
-  pillActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
+  pillActive: { backgroundColor: BRAND_HEADER_BG, borderColor: BRAND_HEADER_BG },
   pillTxt: { fontSize: 12, color: '#6b7280' },
   pillTxtActive: { color: '#fff', fontWeight: '600' },
   sliderWrap: { gap: 10 },
   sliderLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
   sliderLabel: { fontSize: 13, fontWeight: '500', color: '#374151' },
-  sliderValue: { fontSize: 13, fontWeight: '700', color: '#2563eb' },
+  sliderValue: { fontSize: 13, fontWeight: '700', color: BRAND_HEADER_BG },
   sliderTrack: {
     height: 8,
     backgroundColor: '#e5e7eb',
     borderRadius: 4,
     overflow: 'hidden',
   },
-  sliderFill: { height: 8, backgroundColor: '#2563eb', borderRadius: 4 },
+  sliderFill: { height: 8, backgroundColor: BRAND_HEADER_BG, borderRadius: 4 },
   sliderBtns: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sliderBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#EAF4FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sliderBtnTxt: { color: '#2563eb', fontSize: 20, lineHeight: 24, fontWeight: '700' },
-  sliderHint: { flex: 1, fontSize: 11, color: '#9ca3af', textAlign: 'center' },
+  sliderBtnTxt: { color: BRAND_HEADER_BG, fontSize: 20, lineHeight: 24, fontWeight: '700' },
+  sliderHint: { flex: 1, fontSize: 11, color: TEXT_MUTED, textAlign: 'center' },
   outlineBtn: {
     borderWidth: 1,
     borderColor: '#d1d5db',
@@ -328,11 +341,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 6,
   },
-  outlineBtnTxt: { fontSize: 14, color: '#374151', fontWeight: '500' },
   dangerBtn: { borderColor: '#fecaca' },
-  dangerBtnTxt: { color: '#dc2626', fontSize: 14, fontWeight: '500' },
+  dangerBtnTxt: { color: '#dc2626', fontSize: 14, fontWeight: '600' },
   saveBtn: {
-    backgroundColor: '#2563eb',
+    backgroundColor: BRAND_HEADER_BG,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',

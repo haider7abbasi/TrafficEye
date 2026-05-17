@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, Alert } from 'react-native';
+import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
+import { useLoading } from '../context/LoadingContext';
 import firestore from '@react-native-firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { USERS_COLLECTION } from '../config/collections';
@@ -12,6 +14,7 @@ type PendingOfficer = {
 };
 
 export function ApproveOfficersScreen() {
+  const { runWithLoading } = useLoading();
   const { user } = useApp();
   const [items, setItems] = useState<PendingOfficer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +53,10 @@ export function ApproveOfficersScreen() {
   const approveOfficer = async (id: string) => {
     setApprovingId(id);
     try {
-      await firestore().collection(USERS_COLLECTION).doc(id).set({ approved: true }, { merge: true });
+      await runWithLoading(
+        () => firestore().collection(USERS_COLLECTION).doc(id).set({ approved: true }, { merge: true }),
+        'Approving officer…',
+      );
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to approve officer.';
       console.warn('[Approve officer]', message);
@@ -70,11 +76,7 @@ export function ApproveOfficersScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
-      </View>
-    );
+    return <ScreenLoadingCenter message="Loading officers…" />;
   }
 
   return (
@@ -107,8 +109,8 @@ export function ApproveOfficersScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f3f4f6', padding: 14 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6' },
+  root: { flex: 1, backgroundColor: 'transparent', padding: 14 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   heading: { fontSize: 20, fontWeight: '800', color: '#111827' },
   title: { fontSize: 22, fontWeight: '800', color: '#111827', marginBottom: 6 },
   subtle: { color: '#6b7280', marginTop: 2 },
@@ -126,7 +128,7 @@ const styles = StyleSheet.create({
   dept: { fontSize: 12, color: '#6b7280', marginBottom: 8 },
   approveBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: '#16a34a',
+    backgroundColor: '#0057B8',
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 8,

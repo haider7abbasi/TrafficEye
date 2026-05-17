@@ -79,7 +79,13 @@ function main() {
       'ROBOFLOW_VERSION_NUMBER_PLATE',
       'ROBOFLOW_VERSION_MOBILE_PHONE',
       'ROBOFLOW_VERSION_BIKE_HELMET',
+      'ROBOFLOW_VERSION_VEHICLE',
     ];
+    const projectKeys = ['ROBOFLOW_PROJECT_VEHICLE'];
+    for (const pk of projectKeys) {
+      const p = parseEnvValue(env, pk);
+      check(`.env ${pk} is set (vehicle model slug)`, p.length > 0, failures);
+    }
     for (const vk of versionKeys) {
       const v = parseEnvValue(env, vk);
       const ok = /^\d+$/.test(v);
