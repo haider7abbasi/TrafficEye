@@ -92,7 +92,13 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
   const activeRoute = state.routes[state.index]?.name as TabKey;
   const captureFocused = activeRoute === 'Capture';
 
-  const goTo = (route: TabKey) => navigation.navigate(route);
+  const goTo = (route: TabKey) => {
+    if (route === 'Capture') {
+      navigation.navigate({ name: 'Capture', merge: true });
+      return;
+    }
+    navigation.navigate(route);
+  };
 
   const openCameraCapture = () => {
     navigation.navigate({

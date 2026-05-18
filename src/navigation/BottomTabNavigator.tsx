@@ -1,7 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { CaptureScreen } from '../screens/CaptureScreen';
-import { HistoryScreen } from '../screens/HistoryScreen';
+import { HistoryStackNavigator } from './HistoryStackNavigator';
 import { AnalyticsScreen } from '../screens/AnalyticsScreen';
 import { AppBottomTabBar } from './AppBottomTabBar';
 import { QueueTabScreen } from './QueueTabScreen';
@@ -24,10 +24,11 @@ export function BottomTabNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
+        safeAreaInsets: { bottom: 0, top: 0, left: 0, right: 0 },
       }}>
       <Tab.Screen name="Capture" component={CaptureScreen} options={{ title: 'Home' }} />
       <Tab.Screen name="Queue" component={QueueTabScreen} options={{ title: 'Queue' }} />
-      <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
+      <Tab.Screen name="History" component={HistoryStackNavigator} options={{ title: 'History' }} />
       <Tab.Screen name="Analytics" component={AnalyticsScreen} options={{ title: 'Insights' }} />
     </Tab.Navigator>
   );

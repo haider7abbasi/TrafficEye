@@ -384,6 +384,10 @@ export function CaptureScreen({ navigation }: Props) {
       const candidatePlateDisplay = plateTrim ? normalizePlateForDisplay(plateTrim) : undefined;
       const candidatePlateCanonical = plateTrim ? normalizePlateCanonical(plateTrim) : undefined;
 
+      let savedCandidateId: string | undefined;
+      let savedEvidenceRef: string | undefined;
+      const savedSpecIds = pendingInference?.specViolationIds;
+
       // Candidate creation for live/local inference path with dedup create/merge decision.
       if (pendingInference && pendingInference.specViolationIds.length > 0) {
         const dedup = evaluateDedupGate({
@@ -400,6 +404,8 @@ export function CaptureScreen({ navigation }: Props) {
             const uploaded = await uploadCandidateEvidence(candidateId, pendingImage, {
               contentType: pendingEvidenceContentType,
             });
+            savedCandidateId = candidateId;
+            savedEvidenceRef = uploaded.objectPath;
             await createCandidate({
               candidateId,
               sessionId: activeSessionId ?? undefined,
@@ -438,6 +444,10 @@ export function CaptureScreen({ navigation }: Props) {
         vehicleNumber: vehicleNumber || undefined,
         id: `violation-${Date.now()}`,
         timestamp: new Date().toISOString(),
+        candidateId: savedCandidateId,
+        evidenceImageRef: savedEvidenceRef,
+        specViolationIds: savedSpecIds?.length ? savedSpecIds : undefined,
+        sessionId: activeSessionId ?? undefined,
       };
       await addRecord(record);
       setPendingResult(null);
@@ -581,6 +591,8 @@ export function CaptureScreen({ navigation }: Props) {
       return;
     }
 
+    let liveCandidateId: string | undefined;
+    let liveEvidenceRef: string | undefined;
     if (specIds.length > 0) {
       const candidateId =
         gate.decision === 'merge' && gate.existingCandidateId
@@ -589,6 +601,8 @@ export function CaptureScreen({ navigation }: Props) {
       const uploaded = await uploadCandidateEvidence(candidateId, imageUri, {
         contentType: 'image/jpeg',
       });
+      liveCandidateId = candidateId;
+      liveEvidenceRef = uploaded.objectPath;
       await createCandidate({
         candidateId,
         sessionId,
@@ -621,6 +635,10 @@ export function CaptureScreen({ navigation }: Props) {
       confidence: 80,
       location: locationLabel,
       timestamp: new Date().toISOString(),
+      candidateId: liveCandidateId,
+      evidenceImageRef: liveEvidenceRef,
+      specViolationIds: specIds.length > 0 ? specIds : undefined,
+      sessionId,
     };
     await addRecord(record);
     setLiveViolations(v => v + 1);

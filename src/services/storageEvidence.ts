@@ -11,16 +11,28 @@ export type UploadedStorageObject = {
   downloadUrl: string;
 };
 
-function normalizeLocalUploadPath(localUri: string): string {
+export function isRemoteUri(uri: string): boolean {
+  return /^https?:\/\//i.test(uri.trim());
+}
+
+export function isLocalDeviceUri(uri: string): boolean {
+  const u = uri.trim();
+  return u.length > 0 && !isRemoteUri(u);
+}
+
+/** Path/URI passed to Firebase `putFile` (must be file:// or content:// on Android). */
+function pathForPutFile(localUri: string): string {
   const raw = localUri.trim();
   if (!raw) {
     throw new Error('Local file uri is required for Storage upload.');
   }
-  if (/^https?:\/\//i.test(raw)) {
+  if (isRemoteUri(raw)) {
     throw new Error('Storage upload expects a local file uri/path, not a remote URL.');
   }
-  // Keep `content://` URIs intact for Android Storage / Firebase; strip `file://` only.
-  return raw.startsWith('file://') ? raw.replace('file://', '') : raw;
+  if (raw.startsWith('file://') || raw.startsWith('content://')) {
+    return raw;
+  }
+  return `file://${raw}`;
 }
 
 /** Storage object basename under the candidate folder; rules only require image/*. */
@@ -52,13 +64,33 @@ function evidenceUploadContentType(contentTypeHint?: string): string {
   return 'image/jpeg';
 }
 
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const g = globalThis as {
+    Buffer?: { from: (data: Uint8Array) => { toString: (encoding: string) => string } };
+    btoa?: (data: string) => string;
+  };
+  if (g.Buffer) {
+    return g.Buffer.from(bytes).toString('base64');
+  }
+  if (typeof g.btoa === 'function') {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const slice = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...slice);
+    }
+    return g.btoa(binary);
+  }
+  throw new Error('No base64 encoder available in this runtime.');
+}
+
 async function uploadLocalFile(
   objectPath: string,
   localUri: string,
   contentType?: string,
 ): Promise<UploadedStorageObject> {
   const ref = storage().ref(objectPath);
-  const localPath = normalizeLocalUploadPath(localUri);
+  const localPath = pathForPutFile(localUri);
   if (contentType) {
     await ref.putFile(localPath, { contentType });
   } else {
@@ -105,14 +137,29 @@ export function uploadChallanPdfFile(
   return uploadLocalFile(objectPath, localUri, 'application/pdf');
 }
 
+export function uploadChallanEvidenceFromLocal(
+  officerId: string,
+  challanId: string,
+  localUri: string,
+  contentTypeHint?: string,
+): Promise<UploadedStorageObject> {
+  const fileName = candidateEvidenceFileName(localUri, contentTypeHint);
+  const objectPath = challanBundleObjectPath(officerId, challanId, fileName);
+  return uploadLocalFile(objectPath, localUri, evidenceUploadContentType(contentTypeHint));
+}
+
 export async function uploadChallanPdfBase64(
   officerId: string,
   challanId: string,
   pdfBase64: string,
 ): Promise<UploadedStorageObject> {
+  const encoded = pdfBase64?.trim();
+  if (!encoded) {
+    throw new Error('Challan PDF payload is empty.');
+  }
   const objectPath = challanBundleObjectPath(officerId, challanId, 'challan.pdf');
   const ref = storage().ref(objectPath);
-  await ref.putString(pdfBase64, 'base64', {
+  await ref.putString(encoded, 'base64', {
     contentType: 'application/pdf',
   });
   const downloadUrl = await ref.getDownloadURL();
@@ -145,10 +192,14 @@ export async function cloneStorageObjectToChallan(
   if (!response.ok) {
     throw new Error(`Failed to download source storage object: ${response.status}`);
   }
-  const blob = await response.blob();
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  if (bytes.byteLength === 0) {
+    throw new Error('Source storage object is empty.');
+  }
   const targetPath = challanBundleObjectPath(officerId, challanId, targetFileName);
   const ref = storage().ref(targetPath);
-  await ref.put(blob as unknown as Blob, { contentType });
+  await ref.putString(uint8ArrayToBase64(bytes), 'base64', { contentType });
   const downloadUrl = await ref.getDownloadURL();
   return { objectPath: targetPath, downloadUrl };
 }

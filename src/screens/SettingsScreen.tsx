@@ -14,13 +14,16 @@ import {
   Globe,
   HardDrive,
   Lock,
+  LogOut,
   Moon,
   Search,
   Smartphone,
   Sun,
+  User,
   Volume2,
 } from 'lucide-react-native';
 import { appAlert } from '../services/appAlert';
+import { useApp } from '../context/AppContext';
 import {
   persistor,
   useReduxDispatch,
@@ -95,8 +98,16 @@ const QUALITIES: CameraQualityOption[] = [
 const LANGUAGES: LanguageOption[] = ['English', 'Español', 'Français', 'Deutsch', '中文'];
 
 export function SettingsScreen() {
+  const { user, logout } = useApp();
   const dispatch = useReduxDispatch();
   const s = useReduxSelector(state => state.settings);
+
+  const confirmLogout = () => {
+    appAlert('Log out', 'Sign out of TrafficEye on this device?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => void logout() },
+    ]);
+  };
 
   const onSave = async () => {
     try {
@@ -277,6 +288,29 @@ export function SettingsScreen() {
       <Pressable style={styles.saveBtn} onPress={onSave}>
         <Text style={styles.saveBtnTxt}>Save to device storage</Text>
       </Pressable>
+
+      <View style={styles.card}>
+        <View style={styles.cardTitleRow}>
+          <User size={ICON} color={ICON_COLOR} strokeWidth={2} />
+          <View style={styles.cardTitleTextCol}>
+            <Text style={styles.cardTitle}>Account</Text>
+            <Text style={styles.cardSub} numberOfLines={1}>
+              {user?.email ?? 'Signed in'}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.accountName} numberOfLines={1}>
+          {user?.name ?? 'Officer'}
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}
+          onPress={confirmLogout}
+          accessibilityRole="button"
+          accessibilityLabel="Log out">
+          <LogOut size={18} color="#fff" strokeWidth={2.5} />
+          <Text style={styles.logoutBtnTxt}>Log out</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -293,7 +327,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  cardTitleTextCol: { flex: 1, minWidth: 0 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
+  accountName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: TEXT_PRIMARY,
+    marginBottom: 12,
+    marginTop: 2,
+  },
   cardSub: { fontSize: 12, color: TEXT_MUTED },
   selectorWrap: { paddingVertical: 8, gap: 8 },
   selectorLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -350,4 +392,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  logoutBtnPressed: { opacity: 0.9 },
+  logoutBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

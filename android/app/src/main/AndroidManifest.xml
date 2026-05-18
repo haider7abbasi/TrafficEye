@@ -22,6 +22,14 @@
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="video/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/pdf" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/pdf" />
+        </intent>
     </queries>
 
     <application
@@ -46,5 +54,16 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+
+      <provider
+          android:name="cl.json.RNShareFileProvider"
+          android:authorities="${applicationId}.rnshare.fileprovider"
+          android:exported="false"
+          android:grantUriPermissions="true"
+          tools:replace="android:resource">
+          <meta-data
+              android:name="android.support.FILE_PROVIDER_PATHS"
+              android:resource="@xml/share_download_paths" />
+      </provider>
     </application>
 </manifest>

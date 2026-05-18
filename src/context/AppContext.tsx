@@ -58,6 +58,11 @@ export type ViolationRecord = {
   location: string;
   timestamp: string;
   vehicleNumber?: string;
+  candidateId?: string;
+  challanId?: string;
+  specViolationIds?: SpecViolationId[];
+  evidenceImageRef?: string;
+  sessionId?: string;
 };
 
 export type User = {
@@ -82,6 +87,7 @@ type AppContextType = {
   updateUser: (data: Partial<User>) => Promise<void>;
   records: ViolationRecord[];
   addRecord: (record: ViolationRecord) => Promise<void>;
+  updateRecord: (id: string, patch: Partial<ViolationRecord>) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
   uploadCandidateEvidence: (
     candidateId: string,
@@ -147,6 +153,13 @@ function mapViolationDoc(
     location: String(data.location ?? ''),
     timestamp: toIso(data.timestamp as FirebaseFirestoreTypes.Timestamp),
     vehicleNumber: data.vehicleNumber != null ? String(data.vehicleNumber) : undefined,
+    candidateId: data.candidateId != null ? String(data.candidateId) : undefined,
+    challanId: data.challanId != null ? String(data.challanId) : undefined,
+    specViolationIds: Array.isArray(data.specViolationIds)
+      ? (data.specViolationIds as SpecViolationId[])
+      : undefined,
+    evidenceImageRef: data.evidenceImageRef != null ? String(data.evidenceImageRef) : undefined,
+    sessionId: data.sessionId != null ? String(data.sessionId) : undefined,
   };
 }
 
@@ -391,18 +404,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         location: record.location,
         timestamp: Timestamp.fromDate(new Date(record.timestamp)),
         vehicleNumber: record.vehicleNumber ?? null,
+        candidateId: record.candidateId ?? null,
+        challanId: record.challanId ?? null,
+        specViolationIds: record.specViolationIds ?? [],
+        evidenceImageRef: record.evidenceImageRef ?? null,
+        sessionId: record.sessionId ?? null,
       },
     );
+    setRecords(prev => {
+      const idx = prev.findIndex(r => r.id === record.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = record;
+        return next;
+      }
+      return [record, ...prev];
+    });
+  }, []);
+
+  const updateRecord = useCallback(async (id: string, patch: Partial<ViolationRecord>) => {
+    const uid = getFirebaseAuth().currentUser?.uid;
+    if (!uid) {
+      return;
+    }
+    const ref = doc(collection(getFirebaseDb(), USERS_COLLECTION, uid, VIOLATIONS_SUBCOLLECTION), id);
+    const firestorePatch: Record<string, unknown> = {};
+    if (patch.vehicleNumber !== undefined) {
+      firestorePatch.vehicleNumber = patch.vehicleNumber ?? null;
+    }
+    if (patch.candidateId !== undefined) {
+      firestorePatch.candidateId = patch.candidateId ?? null;
+    }
+    if (patch.challanId !== undefined) {
+      firestorePatch.challanId = patch.challanId ?? null;
+    }
+    if (patch.specViolationIds !== undefined) {
+      firestorePatch.specViolationIds = patch.specViolationIds ?? [];
+    }
+    if (patch.evidenceImageRef !== undefined) {
+      firestorePatch.evidenceImageRef = patch.evidenceImageRef ?? null;
+    }
+    if (patch.sessionId !== undefined) {
+      firestorePatch.sessionId = patch.sessionId ?? null;
+    }
+    if (Object.keys(firestorePatch).length > 0) {
+      await setDoc(ref, firestorePatch, { merge: true });
+    }
+    setRecords(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
   }, []);
 
   const deleteRecord = useCallback(async (id: string) => {
     const uid = getFirebaseAuth().currentUser?.uid;
     if (!uid) {
-      return;
+      throw new Error('Sign in again to delete this record.');
     }
     await deleteDoc(
       doc(collection(getFirebaseDb(), USERS_COLLECTION, uid, VIOLATIONS_SUBCOLLECTION), id),
     );
+    setRecords(prev => prev.filter(r => r.id !== id));
   }, []);
 
   const uploadCandidateEvidence = useCallback(
@@ -551,6 +610,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateUser,
         records,
         addRecord,
+        updateRecord,
         deleteRecord,
         uploadCandidateEvidence,
         uploadCandidatePlateCrop,

@@ -218,6 +218,10 @@ export function CandidateQueueScreen() {
         plateCanonical,
         locationText: item.location,
         violationTypes: item.violationTypes,
+        status: 'confirmed',
+        candidateId: item.id,
+        evidenceImageRef: evidenceRef,
+        plateCropRef: plateCropRef ?? undefined,
       });
       const uploadedPdf = await uploadChallanPdfFromBase64(challanId, pdfBase64);
       const candidateRef = firestore().collection(CANDIDATES_COLLECTION).doc(item.id);
