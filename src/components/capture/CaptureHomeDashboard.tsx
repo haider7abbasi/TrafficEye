@@ -7,9 +7,11 @@ import {
   Film,
   Image as ImageIcon,
   Radio,
-  Shield,
   StopCircle,
 } from 'lucide-react-native';
+import { TrafficEyeLogo } from '../TrafficEyeLogo';
+import { LiveScanReportSection } from './LiveScanReportSection';
+import type { LiveScanReport } from '../../types/liveScanReport';
 import {
   ACCENT_BLUE,
   ALERT_RED,
@@ -159,6 +161,9 @@ export type CaptureHomeDashboardProps = {
   onScanVideo: () => void;
   onStartLive: () => void;
   onStopLive: () => void;
+  lastLiveScanReport?: LiveScanReport | null;
+  onViewLiveScanReport?: () => void;
+  onOpenQueueFromReport?: () => void;
 };
 
 export function CaptureHomeDashboard({
@@ -176,6 +181,9 @@ export function CaptureHomeDashboard({
   onScanVideo,
   onStartLive,
   onStopLive,
+  lastLiveScanReport,
+  onViewLiveScanReport,
+  onOpenQueueFromReport,
 }: CaptureHomeDashboardProps) {
   const statusLabel = liveRunning ? 'Live' : busyBannerText ? 'Busy' : 'Ready';
 
@@ -193,7 +201,7 @@ export function CaptureHomeDashboard({
       <View style={styles.commandHeader}>
         <View style={styles.commandHeaderTop}>
           <View style={styles.commandIconWrap}>
-            <Shield size={26} color={PRIMARY_BLUE} strokeWidth={2.2} />
+            <TrafficEyeLogo size={36} />
           </View>
           <View style={styles.commandTextCol}>
             <Text style={styles.commandTitle}>Traffic Eye</Text>
@@ -240,6 +248,14 @@ export function CaptureHomeDashboard({
           accent={liveRunning ? 'gold' : 'default'}
         />
       </View>
+
+      {!liveRunning && lastLiveScanReport && onViewLiveScanReport ? (
+        <LiveScanReportSection
+          report={lastLiveScanReport}
+          onViewDetails={onViewLiveScanReport}
+          onViewQueue={onOpenQueueFromReport}
+        />
+      ) : null}
 
       <View style={styles.actionsCard}>
         <ActionTile
@@ -341,8 +357,6 @@ const styles = StyleSheet.create({
   commandIconWrap: {
     width: 48,
     height: 48,
-    borderRadius: 14,
-    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },

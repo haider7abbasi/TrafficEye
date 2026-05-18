@@ -7,7 +7,8 @@ import { AppBottomTabBar } from './AppBottomTabBar';
 import { QueueTabScreen } from './QueueTabScreen';
 
 export type BottomTabParamList = {
-  Capture: undefined;
+  /** `cameraRequestId` — set by the center Capture FAB to choose photo or video capture. */
+  Capture: { cameraRequestId?: number } | undefined;
   Queue: undefined;
   History: undefined;
   Analytics: undefined;

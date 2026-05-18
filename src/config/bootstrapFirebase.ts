@@ -1,5 +1,6 @@
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import { connectAuthEmulator, getAuth } from '@react-native-firebase/auth';
+import { connectFirestoreEmulator, getFirestore } from '@react-native-firebase/firestore';
+import { getApp } from '@react-native-firebase/app';
 import {
   USE_FIREBASE_EMULATOR,
   FIRESTORE_EMULATOR_HOST,
@@ -25,13 +26,14 @@ export function bootstrapFirebase() {
   const authHost = AUTH_EMULATOR_HOST || '10.0.2.2';
   const authPort = Number(AUTH_EMULATOR_PORT || '9099');
 
+  const app = getApp();
   try {
-    firestore().useEmulator(fsHost, fsPort);
+    connectFirestoreEmulator(getFirestore(app), fsHost, fsPort);
   } catch {
     /* already configured */
   }
   try {
-    auth().useEmulator(`http://${authHost}:${authPort}`);
+    connectAuthEmulator(getAuth(app), `http://${authHost}:${authPort}`);
   } catch {
     /* already configured */
   }

@@ -6,12 +6,29 @@ import React, {
   useEffect,
   useRef,
 } from 'react';
-import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import firestore, {
-  FirebaseFirestoreTypes,
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+  type FirebaseAuthTypes,
+} from '@react-native-firebase/auth';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
   increment,
+  onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
+  setDoc,
+  Timestamp,
+  type FirebaseFirestoreTypes,
 } from '@react-native-firebase/firestore';
+import { getFirebaseAuth, getFirebaseDb } from '../config/firebase';
 import type { UploadedStorageObject } from '../services/storageEvidence';
 import {
   CANDIDATES_COLLECTION,
@@ -151,9 +168,10 @@ function mapUserProfile(
 }
 
 async function ensureUserProfile(fbUser: FirebaseAuthTypes.User): Promise<User> {
-  const ref = firestore().collection(USERS_COLLECTION).doc(fbUser.uid);
-  const snap = await ref.get();
-  if (!snap.exists) {
+  const db = getFirebaseDb();
+  const userRef = doc(collection(db, USERS_COLLECTION), fbUser.uid);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) {
     const profile: User = {
       name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Officer',
       email: fbUser.email || '',
@@ -164,7 +182,7 @@ async function ensureUserProfile(fbUser: FirebaseAuthTypes.User): Promise<User> 
       location: '',
       badgeNumber: '',
     };
-    await ref.set(profile);
+    await setDoc(userRef, profile);
     return profile;
   }
   return mapUserProfile(snap.data(), fbUser);
@@ -211,7 +229,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         bootstrapFirebase();
-        unsubAuth = auth().onAuthStateChanged(async fbUser => {
+        unsubAuth = onAuthStateChanged(getFirebaseAuth(), async fbUser => {
           unsubViolations?.();
           unsubViolations = undefined;
 
@@ -226,13 +244,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             const profile = await ensureUserProfile(fbUser);
             setUser(profile);
 
-            const q = firestore()
-              .collection(USERS_COLLECTION)
-              .doc(fbUser.uid)
-              .collection(VIOLATIONS_SUBCOLLECTION)
-              .orderBy('timestamp', 'desc');
+            const db = getFirebaseDb();
+            const violationsQuery = query(
+              collection(db, USERS_COLLECTION, fbUser.uid, VIOLATIONS_SUBCOLLECTION),
+              orderBy('timestamp', 'desc'),
+            );
 
-            unsubViolations = q.onSnapshot(
+            unsubViolations = onSnapshot(
+              violationsQuery,
               snap => {
                 const list: ViolationRecord[] = [];
                 snap.forEach(d => {
@@ -299,8 +318,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      await auth().signInWithEmailAndPassword(email.trim().toLowerCase(), password);
-      const fbUser = auth().currentUser;
+      const authInstance = getFirebaseAuth();
+      await signInWithEmailAndPassword(authInstance, email.trim().toLowerCase(), password);
+      const fbUser = authInstance.currentUser;
       if (!fbUser) {
         throw new Error('Sign-in failed. Please try again.');
       }
@@ -315,26 +335,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (name: string, email: string, password: string) => {
       const cleanName = name.trim();
       const cleanEmail = email.trim().toLowerCase();
-      const cred = await auth().createUserWithEmailAndPassword(cleanEmail, password);
+      const authInstance = getFirebaseAuth();
+      const cred = await createUserWithEmailAndPassword(authInstance, cleanEmail, password);
       if (cleanName) {
-        await cred.user.updateProfile({ displayName: cleanName });
+        await updateProfile(cred.user, { displayName: cleanName });
       }
-      await firestore()
-        .collection(USERS_COLLECTION)
-        .doc(cred.user.uid)
-        .set(
-          {
-            name: cleanName || cleanEmail.split('@')[0] || 'Officer',
-            email: cleanEmail,
-            role: 'officer',
-            approved: false,
-            phone: '',
-            department: 'Traffic Enforcement',
-            location: '',
-            badgeNumber: '',
-          },
-          { merge: true },
-        );
+      await setDoc(
+        doc(collection(getFirebaseDb(), USERS_COLLECTION), cred.user.uid),
+        {
+          name: cleanName || cleanEmail.split('@')[0] || 'Officer',
+          email: cleanEmail,
+          role: 'officer',
+          approved: false,
+          phone: '',
+          department: 'Traffic Enforcement',
+          location: '',
+          badgeNumber: '',
+        },
+        { merge: true },
+      );
       await hydrateSessionProfile(cred.user);
       await waitForUserProfileInState();
       await settleUiAfterAuth();
@@ -343,57 +362,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    await auth().signOut();
+    await signOut(getFirebaseAuth());
   }, []);
 
   const updateUser = useCallback(async (data: Partial<User>) => {
-    const uid = auth().currentUser?.uid;
+    const uid = getFirebaseAuth().currentUser?.uid;
     if (!uid) {
       return;
     }
     setUser(prev => (prev ? { ...prev, ...data } : prev));
     const { email: _omitEmail, ...patch } = data;
     if (Object.keys(patch).length > 0) {
-      await firestore().collection(USERS_COLLECTION).doc(uid).set(patch, { merge: true });
+      await setDoc(doc(collection(getFirebaseDb(), USERS_COLLECTION), uid), patch, { merge: true });
     }
   }, []);
 
   const addRecord = useCallback(async (record: ViolationRecord) => {
-    const uid = auth().currentUser?.uid;
+    const uid = getFirebaseAuth().currentUser?.uid;
     if (!uid) {
       return;
     }
-    await firestore()
-      .collection(USERS_COLLECTION)
-      .doc(uid)
-      .collection(VIOLATIONS_SUBCOLLECTION)
-      .doc(record.id)
-      .set({
+    await setDoc(
+      doc(collection(getFirebaseDb(), USERS_COLLECTION, uid, VIOLATIONS_SUBCOLLECTION), record.id),
+      {
         imageUri: record.imageUri,
         violations: record.violations,
         confidence: record.confidence,
         location: record.location,
-        timestamp: firestore.Timestamp.fromDate(new Date(record.timestamp)),
+        timestamp: Timestamp.fromDate(new Date(record.timestamp)),
         vehicleNumber: record.vehicleNumber ?? null,
-      });
+      },
+    );
   }, []);
 
   const deleteRecord = useCallback(async (id: string) => {
-    const uid = auth().currentUser?.uid;
+    const uid = getFirebaseAuth().currentUser?.uid;
     if (!uid) {
       return;
     }
-    await firestore()
-      .collection(USERS_COLLECTION)
-      .doc(uid)
-      .collection(VIOLATIONS_SUBCOLLECTION)
-      .doc(id)
-      .delete();
+    await deleteDoc(
+      doc(collection(getFirebaseDb(), USERS_COLLECTION, uid, VIOLATIONS_SUBCOLLECTION), id),
+    );
   }, []);
 
   const uploadCandidateEvidence = useCallback(
     async (candidateId: string, localUri: string, options?: { contentType?: string }) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to upload candidate evidence.');
       }
@@ -404,7 +418,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const uploadCandidatePlateCrop = useCallback(
     async (candidateId: string, localUri: string) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to upload candidate plate crop.');
       }
@@ -415,7 +429,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const uploadChallanPdf = useCallback(
     async (challanId: string, localUri: string) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to upload challan PDF.');
       }
@@ -426,7 +440,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const uploadSessionFrame = useCallback(
     async (sessionId: string, frameId: string, localUri: string) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to upload session frame.');
       }
@@ -437,7 +451,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const uploadChallanPdfFromBase64 = useCallback(
     async (challanId: string, pdfBase64: string) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to upload challan PDF.');
       }
@@ -460,7 +474,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       vehiclePlateDisplay?: string;
       vehiclePlateCanonical?: string;
     }) => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to create candidate.');
       }
@@ -490,24 +504,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } else {
         payload.createdAt = serverTimestamp();
       }
-      await firestore().collection(CANDIDATES_COLLECTION).doc(input.candidateId).set(payload, { merge: true });
+      await setDoc(
+        doc(collection(getFirebaseDb(), CANDIDATES_COLLECTION), input.candidateId),
+        payload,
+        { merge: true },
+      );
     },
     [],
   );
 
   const createIntakeSession = useCallback(
     async (mode: 'still' | 'upload' | 'video' | 'live') => {
-      const uid = auth().currentUser?.uid;
+      const uid = getFirebaseAuth().currentUser?.uid;
       if (!uid) {
         throw new Error('Must be authenticated to create intake session.');
       }
-      const ref = firestore().collection(INTAKE_SESSIONS_COLLECTION).doc();
-      await ref.set({
+      const sessionRef = doc(collection(getFirebaseDb(), INTAKE_SESSIONS_COLLECTION));
+      await setDoc(sessionRef, {
         officerId: uid,
         mode,
         startedAt: serverTimestamp(),
       });
-      return ref.id;
+      return sessionRef.id;
     },
     [],
   );

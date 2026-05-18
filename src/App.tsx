@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getApp } from '@react-native-firebase/app';
 import { waitForNativeFirebaseReady } from './utils/waitForNativeFirebase';
 import { AppProvider, useApp } from './context/AppContext';
+import { AlertProvider } from './context/AlertContext';
 import { LoadingProvider } from './context/LoadingContext';
 import { RootNavigator } from './navigation/RootNavigator';
 import { persistor, store } from './store';
@@ -72,10 +73,12 @@ export default function App() {
         <Provider store={store}>
           <PersistGate loading={<PersistLoading />} persistor={persistor}>
             <AppProvider>
-              <LoadingProvider>
-                <StatusBar barStyle="light-content" backgroundColor={BRAND_HEADER_BG} />
-                <AppNavigationShell />
-              </LoadingProvider>
+              <AlertProvider>
+                <LoadingProvider>
+                  <StatusBar barStyle="light-content" backgroundColor={BRAND_HEADER_BG} />
+                  <AppNavigationShell />
+                </LoadingProvider>
+              </AlertProvider>
             </AppProvider>
           </PersistGate>
         </Provider>

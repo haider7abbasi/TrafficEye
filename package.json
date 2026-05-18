@@ -17,7 +17,8 @@
     "clean:android": "cd android && gradlew.bat clean",
     "clean:build": "npx react-native clean --include metro,android && cd android && gradlew.bat clean",
     "test": "jest",
-    "test:processing": "jest __tests__/violationProcessingFlow.test.ts __tests__/roboflowViolationPolicy.test.ts --verbose"
+    "test:processing": "jest __tests__/violationProcessingFlow.test.ts __tests__/roboflowViolationPolicy.test.ts --verbose",
+    "icons:generate": "node scripts/generate-app-icons.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -72,6 +73,7 @@
     "prettier": "2.8.8",
     "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "19.2.3",
+    "sharp": "^0.34.5",
     "typescript": "^5.8.3"
   },
   "engines": {

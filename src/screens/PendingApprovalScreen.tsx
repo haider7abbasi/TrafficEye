@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
-import { Shield } from 'lucide-react-native';
+import { TrafficEyeLogo } from '../components/TrafficEyeLogo';
 import {
   BG_LIGHT_BLUE,
   BRAND_HEADER_BG,
@@ -23,7 +23,7 @@ export function PendingApprovalScreen() {
       <View style={styles.inner}>
         <View style={styles.card}>
           <View style={styles.iconWrap} accessibilityLabel="Pending approval">
-            <Shield size={28} color={BRAND_HEADER_BG} strokeWidth={2.2} />
+            <TrafficEyeLogo size={40} />
           </View>
           <View style={styles.statusPill}>
             <Text style={styles.statusPillText}>Pending administrator review</Text>

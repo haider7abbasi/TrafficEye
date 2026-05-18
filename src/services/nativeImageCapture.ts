@@ -39,7 +39,14 @@ function mapResponse(response: ImagePickerResponse): PickedImage | null {
   };
 }
 
-/** Opens the device camera; returns `null` if the user cancels. */
+const videoCamera = {
+  mediaType: 'video' as const,
+  videoQuality: 'high' as const,
+  durationLimit: 300,
+  includeBase64: false,
+};
+
+/** Opens the device camera for a still photo; returns `null` if the user cancels. */
 export async function capturePhotoWithDeviceCamera(): Promise<PickedImage | null> {
   const allowed = await ensureAndroidCameraPermission();
   if (!allowed) {
@@ -47,6 +54,20 @@ export async function capturePhotoWithDeviceCamera(): Promise<PickedImage | null
   }
   const response = await launchCamera({
     ...stillPhoto,
+    saveToPhotos: false,
+    cameraType: 'back',
+  });
+  return mapResponse(response);
+}
+
+/** Opens the device camera to record a video; returns `null` if the user cancels. */
+export async function captureVideoWithDeviceCamera(): Promise<PickedVideo | null> {
+  const allowed = await ensureAndroidCameraPermission();
+  if (!allowed) {
+    throw new Error('Camera permission was denied.');
+  }
+  const response = await launchCamera({
+    ...videoCamera,
     saveToPhotos: false,
     cameraType: 'back',
   });

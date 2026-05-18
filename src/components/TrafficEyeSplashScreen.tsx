@@ -8,8 +8,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Shield } from 'lucide-react-native';
 import { TrafficEyeLoader } from './TrafficEyeLoader';
+import { TrafficEyeLogo } from './TrafficEyeLogo';
 import {
   BRAND_HEADER_BG,
   BRAND_HEADER_BG_DEEP,
@@ -51,11 +51,7 @@ export function TrafficEyeSplashScreen({ message }: Props) {
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
         <Animated.View style={[styles.hero, heroStyle]}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <Shield size={40} color={BRAND_HEADER_BG} strokeWidth={2.2} />
-            </View>
-          </View>
+          <TrafficEyeLogo size={112} style={styles.logo} />
           <Text style={styles.brandTitle}>Traffic Eye</Text>
           <Text style={styles.brandTagline}>Smart traffic enforcement</Text>
         </Animated.View>
@@ -108,27 +104,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 24,
   },
-  logoOuter: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  logo: {
     marginBottom: 22,
-  },
-  logoInner: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   brandTitle: {
     color: '#ffffff',

@@ -21,9 +21,9 @@ import {
   TEXT_PRIMARY,
   TEXT_SECONDARY,
 } from '../theme/brandColors';
+import { TrafficEyeLogo } from '../components/TrafficEyeLogo';
 import {
   ChevronRight,
-  Shield,
   ShieldCheck,
   UserCog,
   UserPlus,
@@ -75,7 +75,7 @@ export function WelcomeScreen() {
         <View style={styles.hero}>
           <View style={styles.heroInner}>
             <View style={styles.heroIconWrap}>
-              <Shield size={34} color={BRAND_HEADER_BG} strokeWidth={2.2} />
+              <TrafficEyeLogo size={48} />
             </View>
             <View style={styles.heroTextCol}>
               <Text style={styles.heroTitle}>Traffic Eye</Text>
@@ -178,8 +178,6 @@ const styles = StyleSheet.create({
   heroIconWrap: {
     width: 60,
     height: 60,
-    borderRadius: 30,
-    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
   },

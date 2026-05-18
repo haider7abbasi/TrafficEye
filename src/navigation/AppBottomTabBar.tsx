@@ -94,6 +94,14 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
 
   const goTo = (route: TabKey) => navigation.navigate(route);
 
+  const openCameraCapture = () => {
+    navigation.navigate({
+      name: 'Capture',
+      params: { cameraRequestId: Date.now() },
+      merge: true,
+    });
+  };
+
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.row}>
@@ -110,7 +118,7 @@ export function AppBottomTabBar({ state, navigation }: BottomTabBarProps) {
 
         <View style={styles.centerSlot}>
           <Pressable
-            onPress={() => goTo('Capture')}
+            onPress={openCameraCapture}
             style={({ pressed }) => [styles.fab, captureFocused && styles.fabActive, pressed && styles.fabPressed]}
             accessibilityRole="button"
             accessibilityState={{ selected: captureFocused }}

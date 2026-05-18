@@ -6,12 +6,12 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  Alert,
   Image,
 } from 'react-native';
 import firestore, { FirebaseFirestoreTypes, serverTimestamp } from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { CANDIDATES_COLLECTION, CHALLANS_COLLECTION } from '../config/collections';
+import { appAlert } from '../services/appAlert';
 import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import { useApp } from '../context/AppContext';
 import { useLoading } from '../context/LoadingContext';
@@ -157,7 +157,7 @@ export function CandidateQueueScreen() {
       );
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to discard candidate.';
-      Alert.alert('Discard failed', message);
+      appAlert('Discard failed', message);
     } finally {
       setDiscardingId(null);
     }
@@ -166,14 +166,14 @@ export function CandidateQueueScreen() {
   const confirmCandidate = async (item: CandidateQueueItem) => {
     const uid = auth().currentUser?.uid;
     if (!uid) {
-      Alert.alert('Auth required', 'Sign in again before confirming challan.');
+      appAlert('Auth required', 'Sign in again before confirming challan.');
       return;
     }
     const rawPlate = plateDrafts[item.id] ?? item.plate ?? '';
     const plateCanonical = normalizePlateCanonical(rawPlate);
     const plateDisplay = normalizePlateForDisplay(rawPlate);
     if (!plateCanonical) {
-      Alert.alert('Plate required', 'Enter and confirm the vehicle plate before challan confirmation.');
+      appAlert('Plate required', 'Enter and confirm the vehicle plate before challan confirmation.');
       return;
     }
 
@@ -272,11 +272,11 @@ export function CandidateQueueScreen() {
         violationTypes: item.violationTypes,
         confirmedAtMs: confirmedAt.getTime(),
       });
-      Alert.alert('Challan confirmed', `Reference: ${challanId}`);
+      appAlert('Challan confirmed', `Reference: ${challanId}`);
       }, 'Confirming challan…');
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to confirm challan.';
-      Alert.alert('Confirmation failed', message);
+      appAlert('Confirmation failed', message);
     } finally {
       setConfirmingId(null);
     }

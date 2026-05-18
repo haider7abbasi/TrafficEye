@@ -6,8 +6,8 @@ import {
   Camera,
   Info,
   Lock,
-  Shield,
 } from 'lucide-react-native';
+import { TrafficEyeLogo } from '../components/TrafficEyeLogo';
 import { BRAND_ACCENT, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY } from '../theme/brandColors';
 
 const ICON = 20;
@@ -24,9 +24,7 @@ export function AboutScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <Shield size={32} color="#fff" strokeWidth={2.2} />
-        </View>
+        <TrafficEyeLogo size={72} style={styles.heroIcon} />
         <Text style={styles.heroTitle}>TrafficEye</Text>
         <Text style={styles.heroSub}>Road safety capture and review</Text>
         <Text style={styles.version}>Version 1.0.0</Text>

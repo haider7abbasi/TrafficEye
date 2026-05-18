@@ -12,7 +12,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronLeft, Shield } from 'lucide-react-native';
+import { ChevronLeft } from 'lucide-react-native';
+import { TrafficEyeLogo } from '../TrafficEyeLogo';
 import {
   BRAND_HEADER_BG,
   BRAND_HEADER_BG_DEEP,
@@ -70,7 +71,7 @@ export function AuthScreenShell({
           <View style={styles.hero}>
             <View style={styles.heroInner}>
               <View style={styles.heroIconWrap}>
-                <Shield size={32} color={BRAND_HEADER_BG} strokeWidth={2.2} />
+                <TrafficEyeLogo size={44} />
               </View>
               <View style={styles.heroTextCol}>
                 <Text style={styles.heroTitle}>Traffic Eye</Text>
@@ -140,8 +141,6 @@ const styles = StyleSheet.create({
   heroIconWrap: {
     width: 64,
     height: 64,
-    borderRadius: 32,
-    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
   },

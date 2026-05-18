@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -8,8 +8,9 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { Shield } from 'lucide-react-native';
 import { BRAND_HEADER_BG, TEXT_MUTED } from '../theme/brandColors';
+
+const LOGO_SOURCE = require('../assets/logo.png');
 
 export type TrafficEyeLoaderSize = 'small' | 'medium' | 'large';
 
@@ -28,7 +29,7 @@ type Props = {
 };
 
 /**
- * Branded spinner: rotating ring + shield mark (TrafficEye green).
+ * Branded spinner: rotating ring + Traffic Eye logo mark.
  */
 export function TrafficEyeLoader({
   size = 'medium',
@@ -97,7 +98,12 @@ export function TrafficEyeLoader({
               backgroundColor: `${color}18`,
             },
           ]}>
-          <Shield size={dims.icon} color={color} strokeWidth={dims.stroke} />
+          <Image
+            source={LOGO_SOURCE}
+            style={{ width: dims.icon * 1.35, height: dims.icon * 1.35 }}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
         </Animated.View>
       </View>
       {label ? <Text style={[styles.label, { color: TEXT_MUTED }]}>{label}</Text> : null}

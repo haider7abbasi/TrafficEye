@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Pressable,
   Switch,
-  Alert,
 } from 'react-native';
 import {
   Bell,
@@ -21,6 +20,7 @@ import {
   Sun,
   Volume2,
 } from 'lucide-react-native';
+import { appAlert } from '../services/appAlert';
 import {
   persistor,
   useReduxDispatch,
@@ -101,14 +101,14 @@ export function SettingsScreen() {
   const onSave = async () => {
     try {
       await persistor.flush();
-      Alert.alert('Saved', 'Preferences are stored on this device (AsyncStorage).');
+      appAlert('Saved', 'Preferences are stored on this device (AsyncStorage).');
     } catch {
-      Alert.alert('Save failed', 'Could not write preferences to storage.');
+      appAlert('Save failed', 'Could not write preferences to storage.');
     }
   };
 
   const onClearLocalPreferences = () => {
-    Alert.alert(
+    appAlert(
       'Clear local preferences?',
       'Resets TrafficEye settings on this device only. It does not delete your account or cloud data.',
       [

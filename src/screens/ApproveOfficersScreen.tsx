@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import { useLoading } from '../context/LoadingContext';
 import firestore from '@react-native-firebase/firestore';
 import { useApp } from '../context/AppContext';
 import { USERS_COLLECTION } from '../config/collections';
+import { appAlert } from '../services/appAlert';
 
 type PendingOfficer = {
   id: string;
@@ -60,7 +61,7 @@ export function ApproveOfficersScreen() {
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to approve officer.';
       console.warn('[Approve officer]', message);
-      Alert.alert('Approval failed', message);
+      appAlert('Approval failed', message);
     } finally {
       setApprovingId(null);
     }

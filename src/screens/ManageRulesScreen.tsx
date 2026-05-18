@@ -6,10 +6,10 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  Alert,
 } from 'react-native';
 import firestore, { serverTimestamp } from '@react-native-firebase/firestore';
 import { TRAFFIC_RULES_COLLECTION } from '../config/collections';
+import { appAlert } from '../services/appAlert';
 import { ScreenLoadingCenter } from '../components/TrafficEyeLoader';
 import { useApp } from '../context/AppContext';
 import { useLoading } from '../context/LoadingContext';
@@ -75,30 +75,30 @@ export function ManageRulesScreen() {
     const cleanTitle = title.trim().replace(/\s+/g, ' ');
     const cleanDetails = details.trim();
     if (!cleanTitle || !cleanDetails) {
-      Alert.alert('Missing fields', 'Please enter both a title and details.');
+      appAlert('Missing fields', 'Please enter both a title and details.');
       return null;
     }
     if (cleanTitle.length < 4) {
-      Alert.alert('Invalid title', 'Rule title must be at least 4 characters.');
+      appAlert('Invalid title', 'Rule title must be at least 4 characters.');
       return null;
     }
     if (cleanTitle.length > 80) {
-      Alert.alert('Invalid title', 'Rule title must be 80 characters or less.');
+      appAlert('Invalid title', 'Rule title must be 80 characters or less.');
       return null;
     }
     if (cleanDetails.length < 10) {
-      Alert.alert('Invalid details', 'Rule details must be at least 10 characters.');
+      appAlert('Invalid details', 'Rule details must be at least 10 characters.');
       return null;
     }
     if (cleanDetails.length > 500) {
-      Alert.alert('Invalid details', 'Rule details must be 500 characters or less.');
+      appAlert('Invalid details', 'Rule details must be 500 characters or less.');
       return null;
     }
     const duplicate = items.some(
       r => r.id !== editingId && r.title.trim().toLowerCase() === cleanTitle.toLowerCase(),
     );
     if (duplicate) {
-      Alert.alert('Duplicate rule', 'A rule with the same title already exists.');
+      appAlert('Duplicate rule', 'A rule with the same title already exists.');
       return null;
     }
     return { title: cleanTitle, details: cleanDetails };
@@ -133,7 +133,7 @@ export function ManageRulesScreen() {
       }, editingId ? 'Updating rule…' : 'Saving rule…');
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to save rule.';
-      Alert.alert('Save failed', message);
+      appAlert('Save failed', message);
     } finally {
       setSaving(false);
     }
@@ -150,7 +150,7 @@ export function ManageRulesScreen() {
       );
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to update rule.';
-      Alert.alert('Update failed', message);
+      appAlert('Update failed', message);
     }
   };
 
@@ -169,7 +169,7 @@ export function ManageRulesScreen() {
       }
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Failed to delete rule.';
-      Alert.alert('Delete failed', message);
+      appAlert('Delete failed', message);
     } finally {
       setDeletingId(null);
     }
@@ -244,7 +244,7 @@ export function ManageRulesScreen() {
                 style={[styles.deleteBtn, deletingId === item.id && styles.saveBtnDisabled]}
                 disabled={deletingId === item.id}
                 onPress={() =>
-                  Alert.alert('Delete rule', `Delete "${item.title}"?`, [
+                  appAlert('Delete rule', `Delete "${item.title}"?`, [
                     { text: 'Cancel', style: 'cancel' },
                     { text: 'Delete', style: 'destructive', onPress: () => void deleteRule(item) },
                   ])

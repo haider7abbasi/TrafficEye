@@ -7,10 +7,9 @@ import {
   ScrollView,
   Modal,
   Image,
-  Alert,
   TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Camera,
@@ -34,13 +33,22 @@ import {
 } from '../theme/brandColors';
 import {
   capturePhotoWithDeviceCamera,
+  captureVideoWithDeviceCamera,
   pickPhotoFromDeviceLibrary,
   pickVideoFromDeviceLibrary,
+  type PickedVideo,
 } from '../services/nativeImageCapture';
 import { extractApprox1FpsJpegUrisFromVideo } from '../services/extractVideoFrames';
 import type { SpecViolationId } from '../rules/specViolationMapping';
 import { predictionToPixelCropRect, type RoboflowPrediction } from '../services/roboflowViolationPolicy';
 import { CaptureHomeDashboard } from '../components/capture/CaptureHomeDashboard';
+import { LiveScanResultsModal } from '../components/capture/LiveScanResultsModal';
+import {
+  buildLiveScanReport,
+  type LiveScanFrameEntry,
+  type LiveScanMode,
+  type LiveScanReport,
+} from '../types/liveScanReport';
 import { TrafficEyeLoader } from '../components/TrafficEyeLoader';
 import { startFrameSampler } from '../services/frameSampler';
 import { createArrayFrameProvider, createSequentialFrameProvider } from '../services/videoFrameIterator';
@@ -49,6 +57,8 @@ import {
   buildViolationSignature,
   registerCandidateObservation,
 } from '../services/dedupGate';
+import type { BottomTabParamList } from '../navigation/BottomTabNavigator';
+import { appAlert } from '../services/appAlert';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -64,6 +74,8 @@ import {
 function isLocalImageUri(uri: string): boolean {
   return uri.startsWith('file://') || uri.startsWith('content://') || /^[a-zA-Z]:\\/.test(uri) || uri.startsWith('/');
 }
+
+type CaptureRouteProp = RouteProp<BottomTabParamList, 'Capture'>;
 
 type Props = {
   navigation: NativeStackNavigationProp<any>;
@@ -81,6 +93,7 @@ function visionPhotoPathToUri(path: string): string {
 }
 
 export function CaptureScreen({ navigation }: Props) {
+  const route = useRoute<CaptureRouteProp>();
   const { records, addRecord, createIntakeSession, uploadCandidateEvidence, createCandidate, user } =
     useApp();
   const { hasPermission: hasCameraPermission, requestPermission: requestCameraPermission } = useCameraPermission();
@@ -105,7 +118,15 @@ export function CaptureScreen({ navigation }: Props) {
   const [liveCameraVisible, setLiveCameraVisible] = useState(false);
   /** Updated from VisionCamera frame processor (~1 Hz) — preview buffer size, not photo file size. */
   const [liveStreamDims, setLiveStreamDims] = useState('');
+  const [liveScanReport, setLiveScanReport] = useState<LiveScanReport | null>(null);
+  const [liveScanResultsVisible, setLiveScanResultsVisible] = useState(false);
   const stopLiveRef = useRef<(() => void) | null>(null);
+  const liveScanAccumRef = useRef<{
+    sessionId: string;
+    mode: LiveScanMode;
+    startedAt: string;
+    entries: LiveScanFrameEntry[];
+  } | null>(null);
   const processLiveFrameRef = useRef<
     | ((
         imageUri: string,
@@ -159,11 +180,11 @@ export function CaptureScreen({ navigation }: Props) {
 
   const runDetection = async (imageUri: string, mode: 'still' | 'upload', mediaHint?: MediaHint) => {
     if (liveRunning) {
-      Alert.alert('Live monitoring active', 'Stop live monitoring before running single-image detection.');
+      appAlert('Live monitoring active', 'Stop live monitoring before running single-image detection.');
       return;
     }
     if (!isLocalImageUri(imageUri)) {
-      Alert.alert(
+      appAlert(
         'Local image required',
         'Analysis uses your hosted Roboflow models on device photos only. Use Take photo or Choose from gallery.',
       );
@@ -204,7 +225,7 @@ export function CaptureScreen({ navigation }: Props) {
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
       console.warn('[Capture inference]', message);
-      Alert.alert('Detection failed', message);
+      appAlert('Detection failed', message);
       setPendingImage(null);
       setPendingEvidenceContentType(undefined);
       setPendingResult(null);
@@ -215,8 +236,53 @@ export function CaptureScreen({ navigation }: Props) {
     }
   };
 
+  const alertIfCaptureBlocked = (): boolean => {
+    if (!interactionLocked) {
+      return false;
+    }
+    if (detecting || videoExtracting) {
+      appAlert('Please wait', 'Finish the current analysis before capturing again.');
+    } else if (liveRunning) {
+      appAlert('Live monitoring active', 'Stop live monitoring before taking a photo or video.');
+    }
+    return true;
+  };
+
+  const processVideoForScan = async (picked: PickedVideo) => {
+    setVideoExtracting(true);
+    try {
+      const { frameUris, durationMs } = await extractApprox1FpsJpegUrisFromVideo(
+        picked.uri,
+        picked.mimeType,
+      );
+      setVideoExtracting(false);
+      if (frameUris.length === 0) {
+        appAlert('Video', 'No frames could be extracted from this file.');
+        return;
+      }
+      const sec = Math.max(1, Math.round(durationMs / 1000));
+      appAlert(
+        'Ready to scan',
+        `We prepared ${frameUris.length} frame${frameUris.length === 1 ? '' : 's'} from about ${sec}s of video (very long clips may be shortened). Start the automatic scan?`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Start scan',
+            onPress: () => {
+              void beginLiveSampler(frameUris, 'video', true);
+            },
+          },
+        ],
+      );
+    } catch (e) {
+      setVideoExtracting(false);
+      const message = (e as { message?: string })?.message ?? 'Could not read this video.';
+      appAlert('Video', message);
+    }
+  };
+
   const handleDeviceCamera = async () => {
-    if (interactionLocked) {
+    if (alertIfCaptureBlocked()) {
       return;
     }
     try {
@@ -229,9 +295,48 @@ export function CaptureScreen({ navigation }: Props) {
       }
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Could not open camera.';
-      Alert.alert('Camera', message);
+      appAlert('Camera', message);
     }
   };
+
+  const handleDeviceVideoCamera = async () => {
+    if (alertIfCaptureBlocked()) {
+      return;
+    }
+    try {
+      const picked = await captureVideoWithDeviceCamera();
+      if (picked) {
+        await processVideoForScan(picked);
+      }
+    } catch (e) {
+      const message = (e as { message?: string })?.message ?? 'Could not record video.';
+      appAlert('Video', message);
+    }
+  };
+
+  const presentCaptureMediaChooser = () => {
+    if (alertIfCaptureBlocked()) {
+      return;
+    }
+    appAlert('Capture', 'Choose photo or video', [
+      { text: 'Take photo', onPress: () => void handleDeviceCamera() },
+      { text: 'Record video', onPress: () => void handleDeviceVideoCamera() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const presentCaptureMediaChooserRef = useRef(presentCaptureMediaChooser);
+  presentCaptureMediaChooserRef.current = presentCaptureMediaChooser;
+
+  /** Center tab Capture FAB — photo or video from camera. */
+  useEffect(() => {
+    const requestId = route.params?.cameraRequestId;
+    if (requestId == null) {
+      return;
+    }
+    navigation.setParams({ cameraRequestId: undefined });
+    presentCaptureMediaChooserRef.current();
+  }, [route.params?.cameraRequestId, navigation]);
 
   const handleDeviceGallery = async () => {
     if (interactionLocked) {
@@ -247,7 +352,7 @@ export function CaptureScreen({ navigation }: Props) {
       }
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Could not open photo library.';
-      Alert.alert('Photo library', message);
+      appAlert('Photo library', message);
     }
   };
 
@@ -255,7 +360,7 @@ export function CaptureScreen({ navigation }: Props) {
     if (pendingResult && pendingImage) {
       // Phase 4 policy: non-violations are discarded; no cloud writes for this frame.
       if (pendingResult.violations.length === 0) {
-        Alert.alert(
+        appAlert(
           'No violation detected',
           pendingInference?.plainLanguage?.headline
             ? `${pendingInference.plainLanguage.headline}\n\n${pendingInference.plainLanguage.bullets.slice(0, 4).join('\n')}`
@@ -323,7 +428,7 @@ export function CaptureScreen({ navigation }: Props) {
           } catch (e) {
             const message = (e as { message?: string })?.message ?? 'Candidate write failed.';
             console.warn('[Candidate create]', message);
-            Alert.alert('Candidate write warning', message);
+            appAlert('Candidate write warning', message);
           }
         }
       }
@@ -354,16 +459,53 @@ export function CaptureScreen({ navigation }: Props) {
     setActiveSessionId(null);
   };
 
+  const openCandidateQueue = useCallback(() => {
+    navigation.navigate('MainTabs', { screen: 'Queue' });
+  }, [navigation]);
+
+  const finalizeLiveScanReport = useCallback(() => {
+    const accum = liveScanAccumRef.current;
+    liveScanAccumRef.current = null;
+    if (accum && accum.entries.length > 0) {
+      const report = buildLiveScanReport(accum);
+      setLiveScanReport(report);
+      setLiveScanResultsVisible(true);
+    }
+  }, []);
+
   const stopLiveMonitoring = useCallback(() => {
     stopLiveRef.current?.();
     stopLiveRef.current = null;
     liveSamplerStartedRef.current = false;
     liveSessionIdRef.current = null;
     setLiveCameraVisible(false);
+    finalizeLiveScanReport();
     setLiveRunning(false);
     setLiveStreamDims('');
     setLiveLastInfo('Stopped');
-  }, []);
+  }, [finalizeLiveScanReport]);
+
+  const pushLiveScanEntry = (
+    entry: Omit<LiveScanFrameEntry, 'timestamp'> & { timestamp?: string },
+  ) => {
+    if (!liveScanAccumRef.current) {
+      return;
+    }
+    liveScanAccumRef.current.entries.push({
+      ...entry,
+      violations: entry.violations ?? [],
+      timestamp: entry.timestamp ?? new Date().toISOString(),
+    });
+  };
+
+  const startLiveScanSession = (sessionId: string, mode: LiveScanMode) => {
+    liveScanAccumRef.current = {
+      sessionId,
+      mode,
+      startedAt: new Date().toISOString(),
+      entries: [],
+    };
+  };
 
   const processLiveFrame = async (
     imageUri: string,
@@ -376,6 +518,12 @@ export function CaptureScreen({ navigation }: Props) {
     if (!local) {
       console.warn('[Live frame] Skipping non-local URI (unexpected)', imageUri);
       setLiveLastInfo(`Frame ${frameId}: local image required for Roboflow`);
+      pushLiveScanEntry({
+        frameId,
+        outcome: 'error',
+        summary: 'Local image required for detection',
+        violations: [],
+      });
       return;
     }
 
@@ -397,11 +545,24 @@ export function CaptureScreen({ navigation }: Props) {
       const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
       console.warn('[Live frame inference]', message);
       setLiveLastInfo(`Frame ${frameId}: detection error`);
+      pushLiveScanEntry({
+        frameId,
+        outcome: 'error',
+        summary: message,
+        violations: [],
+      });
       return;
     }
 
     if (violationLabels.length === 0) {
-      setLiveLastInfo(`${frameId}: ${savedHeadline || 'No violation'}`);
+      const summary = savedHeadline || 'No violation';
+      setLiveLastInfo(`${frameId}: ${summary}`);
+      pushLiveScanEntry({
+        frameId,
+        outcome: 'clear',
+        summary,
+        violations: [],
+      });
       return;
     }
 
@@ -411,6 +572,12 @@ export function CaptureScreen({ navigation }: Props) {
     });
     if (gate.decision === 'suppress') {
       setLiveLastInfo(`Frame ${frameId}: ${gate.decision}`);
+      pushLiveScanEntry({
+        frameId,
+        outcome: 'suppressed',
+        summary: `Duplicate suppressed (${gate.decision})`,
+        violations: violationLabels,
+      });
       return;
     }
 
@@ -457,7 +624,14 @@ export function CaptureScreen({ navigation }: Props) {
     };
     await addRecord(record);
     setLiveViolations(v => v + 1);
-    setLiveLastInfo(`${frameId}: ${savedHeadline} — saved`);
+    const summary = savedHeadline ? `${savedHeadline} — saved` : 'Violation saved';
+    setLiveLastInfo(`${frameId}: ${summary}`);
+    pushLiveScanEntry({
+      frameId,
+      outcome: 'violation',
+      summary: savedHeadline || 'Violation flagged',
+      violations: violationLabels,
+    });
   };
 
   processLiveFrameRef.current = processLiveFrame;
@@ -471,7 +645,7 @@ export function CaptureScreen({ navigation }: Props) {
       return;
     }
     if (detecting) {
-      Alert.alert('Detection in progress', 'Wait for current detection to complete before starting live mode.');
+      appAlert('Detection in progress', 'Wait for current detection to complete before starting live mode.');
       return;
     }
     let sessionId: string;
@@ -479,7 +653,7 @@ export function CaptureScreen({ navigation }: Props) {
       sessionId = await createIntakeSession(sessionMode);
       setActiveSessionId(sessionId);
     } catch (e) {
-      Alert.alert('Live start failed', 'Could not create intake session.');
+      appAlert('Live start failed', 'Could not create intake session.');
       return;
     }
 
@@ -492,6 +666,7 @@ export function CaptureScreen({ navigation }: Props) {
     setLiveViolations(0);
     setLiveLastInfo(sequential ? 'Scanning video at ~1 FPS…' : 'Running at ~1 FPS');
     setLiveRunning(true);
+    startLiveScanSession(sessionId, sessionMode);
 
     stopLiveRef.current = startFrameSampler({
       fps: 1,
@@ -557,7 +732,7 @@ export function CaptureScreen({ navigation }: Props) {
       return;
     }
     if (detecting) {
-      Alert.alert('Detection in progress', 'Wait for current detection to complete before starting live mode.');
+      appAlert('Detection in progress', 'Wait for current detection to complete before starting live mode.');
       return;
     }
     let granted = hasCameraPermission;
@@ -565,11 +740,11 @@ export function CaptureScreen({ navigation }: Props) {
       granted = await requestCameraPermission();
     }
     if (!granted) {
-      Alert.alert('Camera required', 'Allow camera access to run live monitoring at ~1 FPS.');
+      appAlert('Camera required', 'Allow camera access to run live monitoring at ~1 FPS.');
       return;
     }
     if (cameraDevice == null) {
-      Alert.alert('No camera', 'Could not open a back camera on this device.');
+      appAlert('No camera', 'Could not open a back camera on this device.');
       return;
     }
 
@@ -579,7 +754,7 @@ export function CaptureScreen({ navigation }: Props) {
       setActiveSessionId(sessionId);
       liveSessionIdRef.current = sessionId;
     } catch {
-      Alert.alert('Live start failed', 'Could not create intake session.');
+      appAlert('Live start failed', 'Could not create intake session.');
       return;
     }
 
@@ -590,45 +765,21 @@ export function CaptureScreen({ navigation }: Props) {
     setLiveLastInfo('Starting camera…');
     setLiveRunning(true);
     setLiveCameraVisible(true);
+    startLiveScanSession(sessionId, 'live');
   };
 
   const handleChooseVideoForLiveScan = async () => {
-    if (interactionLocked) {
+    if (alertIfCaptureBlocked()) {
       return;
     }
     try {
       const picked = await pickVideoFromDeviceLibrary();
-      if (!picked) {
-        return;
+      if (picked) {
+        await processVideoForScan(picked);
       }
-      setVideoExtracting(true);
-      const { frameUris, durationMs } = await extractApprox1FpsJpegUrisFromVideo(
-        picked.uri,
-        picked.mimeType,
-      );
-      setVideoExtracting(false);
-      if (frameUris.length === 0) {
-        Alert.alert('Video', 'No frames could be extracted from this file.');
-        return;
-      }
-      const sec = Math.max(1, Math.round(durationMs / 1000));
-      Alert.alert(
-        'Ready to scan',
-        `We prepared ${frameUris.length} frame${frameUris.length === 1 ? '' : 's'} from about ${sec}s of video (very long clips may be shortened). Start the automatic scan?`,
-        [
-          { text: 'Not now', style: 'cancel' },
-          {
-            text: 'Start scan',
-            onPress: () => {
-              void beginLiveSampler(frameUris, 'video', true);
-            },
-          },
-        ],
-      );
     } catch (e) {
-      setVideoExtracting(false);
-      const message = (e as { message?: string })?.message ?? 'Could not read this video.';
-      Alert.alert('Video', message);
+      const message = (e as { message?: string })?.message ?? 'Could not open video library.';
+      appAlert('Video', message);
     }
   };
 
@@ -671,8 +822,21 @@ export function CaptureScreen({ navigation }: Props) {
           onScanVideo={handleChooseVideoForLiveScan}
           onStartLive={startLiveMonitoring}
           onStopLive={stopLiveMonitoring}
+          lastLiveScanReport={!liveRunning ? liveScanReport : null}
+          onViewLiveScanReport={() => setLiveScanResultsVisible(true)}
+          onOpenQueueFromReport={openCandidateQueue}
         />
       </ScrollView>
+
+      <LiveScanResultsModal
+        visible={liveScanResultsVisible}
+        report={liveScanReport}
+        onClose={() => setLiveScanResultsVisible(false)}
+        onViewQueue={() => {
+          setLiveScanResultsVisible(false);
+          openCandidateQueue();
+        }}
+      />
 
       {/* Detecting Modal */}
       <Modal visible={detecting} animationType="fade" transparent>

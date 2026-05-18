@@ -4,7 +4,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import {
   createDrawerNavigator,
@@ -43,6 +42,7 @@ import {
   Wrench,
 } from 'lucide-react-native';
 import { getFocusedLeafRouteName } from './drawerNavUtils';
+import { appAlert } from '../services/appAlert';
 
 export type DrawerParamList = {
   MainTabs: { screen?: string } | undefined;
@@ -292,7 +292,7 @@ export function DrawerNavigator() {
   const { user, logout } = useApp();
 
   const confirmLogout = () => {
-    Alert.alert('Log out', 'Sign out of TrafficEye?', [
+    appAlert('Log out', 'Sign out of TrafficEye?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Log out', style: 'destructive', onPress: () => void logout() },
     ]);
