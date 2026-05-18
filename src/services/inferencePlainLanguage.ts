@@ -1,30 +1,15 @@
 import type { SpecViolationId } from '../rules/specViolationMapping';
 import type { ViolationPipelineDiagnostics } from './violationProcessingFlow';
-import type { RoboflowPrediction } from './roboflowViolationPolicy';
+export { formatModelDetectionsLine } from './detectionDisplay';
 
 export type InferencePlainLanguage = {
   headline: string;
   bullets: string[];
   /** Short scenario labels for History / result badges (not Roboflow class names). */
   displayViolationLabels: string[];
+  pipelineBullet: string;
+  footerBullets: string[];
 };
-
-/** Short “models responded with …” line for one model (direct readout). */
-export function formatModelDetectionsLine(
-  label: string,
-  predictions: RoboflowPrediction[],
-  maxItems = 5,
-): string {
-  if (predictions.length === 0) {
-    return `${label}: no detections above parse threshold.`;
-  }
-  const parts = predictions.slice(0, maxItems).map(p => {
-    const pct = Math.round(Math.max(0, Math.min(1, p.confidence)) * 100);
-    return `${p.class} (${pct}%)`;
-  });
-  const more = predictions.length > maxItems ? ` …+${predictions.length - maxItems} more` : '';
-  return `${label}: ${parts.join(', ')}${more}.`;
-}
 
 /**
  * Officer-facing outcome line + badge strings from scene context and spec ids.
@@ -91,22 +76,41 @@ export function buildScenarioDisplay(
 export function buildInferencePlainLanguage(params: {
   diagnostics: ViolationPipelineDiagnostics;
   specViolationIds: SpecViolationId[];
-  /** True when step 2 specialist Roboflow calls were not run (step 1 vehicle gate failed). */
   specialistsSkipped?: boolean;
+  displayMinConfidence: number;
   linesPerModel: {
     vehicle: string;
     seatbelt: string;
     helmet: string;
     mobile: string;
   };
-  /** When violations triggered a plate-model run, pass its detection line here. */
   plateLine?: string;
 }): InferencePlainLanguage {
   const { diagnostics: d, specViolationIds, linesPerModel, plateLine, specialistsSkipped } = params;
   const scene = buildScenarioDisplay(d, specViolationIds);
+  const displayPct = Math.round(params.displayMinConfidence * 100);
+
+  const pipelineBullet = `Pipeline: (1) Vehicle present (vehicle model only) = ${d.vehiclePresent ? 'yes' : 'no'} → (2) Specialists = ${specialistsSkipped ? 'skipped' : 'run'} → (3) Violations = ${specViolationIds.length > 0 ? 'yes' : 'no'}.`;
+
+  const footerBullets: string[] = [
+    `Display: boxes and model readouts at or above ${displayPct}% (enforcement rules use separate fixed thresholds).`,
+  ];
+
+  if (d.vehicleBoxCount > 0 && !d.carFromVehicle && !d.bikeFromVehicle) {
+    footerBullets.push(
+      'Context: vehicle model returned boxes, but none matched car, Bus, truck, or Motorcycle at the vehicle confidence threshold — treated as no car and no bike.',
+    );
+  }
+
+  footerBullets.push(
+    `Scene rules: car context = ${d.carPresent ? 'yes' : 'no'}, bike context = ${d.bikePresent ? 'yes' : 'no'}, person cue = ${d.personPresent ? 'yes' : 'no'}.`,
+  );
+  footerBullets.push(
+    `Raw specialist flags (before combining rules): seatbelt violation class = ${d.rawSeatbeltViolation ? 'yes' : 'no'}, helmet violation class = ${d.rawHelmetViolation ? 'yes' : 'no'}, phone strict (using/calling/texting) = ${d.rawMobileViolationStrict ? 'yes' : 'no'}, phone_in_hand only = ${d.rawPhoneInHandOnly ? 'yes' : 'no'}.`,
+  );
 
   const bullets: string[] = [
-    `Pipeline: (1) Vehicle present (vehicle model only) = ${d.vehiclePresent ? 'yes' : 'no'} → (2) Specialists = ${specialistsSkipped ? 'skipped' : 'run'} → (3) Violations = ${specViolationIds.length > 0 ? 'yes' : 'no'}.`,
+    pipelineBullet,
     linesPerModel.vehicle,
     linesPerModel.seatbelt,
     linesPerModel.helmet,
@@ -115,23 +119,13 @@ export function buildInferencePlainLanguage(params: {
   if (plateLine) {
     bullets.push(plateLine);
   }
-
-  if (d.vehicleBoxCount > 0 && !d.carFromVehicle && !d.bikeFromVehicle) {
-    bullets.push(
-      'Context: vehicle model returned boxes, but none matched car, Bus, truck, or Motorcycle at the vehicle confidence threshold — treated as no car and no bike.',
-    );
-  }
-
-  bullets.push(
-    `Scene rules: car context = ${d.carPresent ? 'yes' : 'no'}, bike context = ${d.bikePresent ? 'yes' : 'no'}, person cue = ${d.personPresent ? 'yes' : 'no'}.`,
-  );
-  bullets.push(
-    `Raw specialist flags (before combining rules): seatbelt violation class = ${d.rawSeatbeltViolation ? 'yes' : 'no'}, helmet violation class = ${d.rawHelmetViolation ? 'yes' : 'no'}, phone strict (using/calling/texting) = ${d.rawMobileViolationStrict ? 'yes' : 'no'}, phone_in_hand only = ${d.rawPhoneInHandOnly ? 'yes' : 'no'}.`,
-  );
+  bullets.push(...footerBullets);
 
   return {
     headline: scene.headline,
     bullets,
     displayViolationLabels: scene.displayViolationLabels,
+    pipelineBullet,
+    footerBullets,
   };
 }

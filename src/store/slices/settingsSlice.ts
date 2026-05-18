@@ -13,7 +13,6 @@ export type SettingsState = {
   soundEnabled: boolean;
   vibrationEnabled: boolean;
   darkMode: boolean;
-  autoSavePhotos: boolean;
   detectionConfidence: number;
   cameraQuality: CameraQualityOption;
   language: LanguageOption;
@@ -24,7 +23,6 @@ const initialState: SettingsState = {
   soundEnabled: true,
   vibrationEnabled: true,
   darkMode: false,
-  autoSavePhotos: true,
   detectionConfidence: 75,
   cameraQuality: 'High (Recommended)',
   language: 'English',
@@ -46,9 +44,6 @@ const settingsSlice = createSlice({
     setDarkMode(state, action: PayloadAction<boolean>) {
       state.darkMode = action.payload;
     },
-    setAutoSavePhotos(state, action: PayloadAction<boolean>) {
-      state.autoSavePhotos = action.payload;
-    },
     setDetectionConfidence(state, action: PayloadAction<number>) {
       state.detectionConfidence = Math.min(100, Math.max(50, Math.round(action.payload)));
     },
@@ -57,6 +52,30 @@ const settingsSlice = createSlice({
     },
     setLanguage(state, action: PayloadAction<LanguageOption>) {
       state.language = action.payload;
+    },
+    hydrateSettings(state, action: PayloadAction<Partial<SettingsState>>) {
+      const p = action.payload;
+      if (typeof p.notificationsEnabled === 'boolean') {
+        state.notificationsEnabled = p.notificationsEnabled;
+      }
+      if (typeof p.soundEnabled === 'boolean') {
+        state.soundEnabled = p.soundEnabled;
+      }
+      if (typeof p.vibrationEnabled === 'boolean') {
+        state.vibrationEnabled = p.vibrationEnabled;
+      }
+      if (typeof p.darkMode === 'boolean') {
+        state.darkMode = p.darkMode;
+      }
+      if (typeof p.detectionConfidence === 'number') {
+        state.detectionConfidence = Math.min(100, Math.max(50, Math.round(p.detectionConfidence)));
+      }
+      if (p.cameraQuality) {
+        state.cameraQuality = p.cameraQuality;
+      }
+      if (p.language) {
+        state.language = p.language;
+      }
     },
     resetSettings: () => initialState,
   },
@@ -67,10 +86,10 @@ export const {
   setSoundEnabled,
   setVibrationEnabled,
   setDarkMode,
-  setAutoSavePhotos,
   setDetectionConfidence,
   setCameraQuality,
   setLanguage,
+  hydrateSettings,
   resetSettings,
 } = settingsSlice.actions;
 

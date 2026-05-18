@@ -13,6 +13,7 @@ import { LoadingProvider } from './context/LoadingContext';
 import { RootNavigator } from './navigation/RootNavigator';
 import { persistor, store } from './store';
 import { TrafficEyeSplashScreen } from './components/TrafficEyeSplashScreen';
+import { UserSettingsHydrator } from './components/settings/UserSettingsHydrator';
 import { BRAND_HEADER_BG } from './theme/brandColors';
 
 function AuthSplash() {
@@ -75,6 +76,7 @@ export default function App() {
             <AppProvider>
               <AlertProvider>
                 <LoadingProvider>
+                  <UserSettingsHydrator />
                   <StatusBar barStyle="light-content" backgroundColor={BRAND_HEADER_BG} />
                   <AppNavigationShell />
                 </LoadingProvider>

@@ -47,8 +47,6 @@ async function extractOneJpegFrame(
       url: videoUrl,
       timeStamp: timeStampMs,
       format: 'jpeg',
-      maxHeight: 720,
-      maxWidth: 1280,
     });
     const uri = res.path.startsWith('file://') ? res.path : `file://${res.path}`;
     return uri;

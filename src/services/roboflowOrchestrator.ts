@@ -12,11 +12,9 @@ import {
   applyViolationProcessingFlowWithDiagnostics,
   evaluateVehicleSceneGate,
 } from './violationProcessingFlow';
-import {
-  buildInferencePlainLanguage,
-  formatModelDetectionsLine,
-  type InferencePlainLanguage,
-} from './inferencePlainLanguage';
+import { getDetectionDisplayMinConfidence } from '../store/detectionDisplayConfidence';
+import { formatModelDetectionsLine, topDisplayConfidencePercent } from './detectionDisplay';
+import { buildInferencePlainLanguage, type InferencePlainLanguage } from './inferencePlainLanguage';
 
 export type { InferencePlainLanguage };
 
@@ -26,6 +24,7 @@ export type RoboflowOrchestrationResult = {
   confidencePercent: number;
   platePrediction: RoboflowPrediction | null;
   projectPredictions: Record<RoboflowTrafficProject, RoboflowPrediction[]>;
+  specialistsSkipped: boolean;
   /** Officer-readable: what each model saw + how rules combined into the outcome. */
   plainLanguage: InferencePlainLanguage;
 };
@@ -83,27 +82,35 @@ function buildOrchestrationResult(params: {
     specialistsSkipped ? 0 : topConfidence(helmetPred),
     specialistsSkipped ? 0 : topConfidence(mobilePred),
   ];
-  const confidencePercent = toPercent01(Math.max(...perModelConfidence));
+  const displayMin = getDetectionDisplayMinConfidence();
+  const confidencePercent =
+    topDisplayConfidencePercent(
+      specialistsSkipped
+        ? [vehiclePred]
+        : [vehiclePred, seatbeltPred, helmetPred, mobilePred, platePredictions],
+      displayMin,
+    ) || toPercent01(Math.max(...perModelConfidence));
 
   const plainLanguage = buildInferencePlainLanguage({
     diagnostics,
     specViolationIds,
     specialistsSkipped,
+    displayMinConfidence: displayMin,
     linesPerModel: {
-      vehicle: formatModelDetectionsLine('Vehicle model (step 1)', vehiclePred),
+      vehicle: formatModelDetectionsLine('Vehicle model (step 1)', vehiclePred, displayMin),
       seatbelt: specialistsSkipped
         ? 'Seatbelt model (step 2): skipped — no vehicle in step 1.'
-        : formatModelDetectionsLine('Seatbelt model (step 2)', seatbeltPred),
+        : formatModelDetectionsLine('Seatbelt model (step 2)', seatbeltPred, displayMin),
       helmet: specialistsSkipped
         ? 'Helmet model (step 2): skipped — no vehicle in step 1.'
-        : formatModelDetectionsLine('Helmet model (step 2)', helmetPred),
+        : formatModelDetectionsLine('Helmet model (step 2)', helmetPred, displayMin),
       mobile: specialistsSkipped
         ? 'Phone model (step 2): skipped — no vehicle in step 1.'
-        : formatModelDetectionsLine('Phone model (step 2)', mobilePred),
+        : formatModelDetectionsLine('Phone model (step 2)', mobilePred, displayMin),
     },
     plateLine:
       specViolationIds.length > 0
-        ? formatModelDetectionsLine('Number plate model', platePredictions)
+        ? formatModelDetectionsLine('Number plate model', platePredictions, displayMin)
         : undefined,
   });
 
@@ -119,6 +126,7 @@ function buildOrchestrationResult(params: {
       vehicle: vehiclePred,
       number_plate: platePredictions,
     },
+    specialistsSkipped,
     plainLanguage,
   };
 }

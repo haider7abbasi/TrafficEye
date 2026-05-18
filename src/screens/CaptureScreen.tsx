@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,7 +22,17 @@ import { useRunOnJS } from 'react-native-worklets-core';
 import { useApp, ViolationRecord } from '../context/AppContext';
 import { normalizePlateCanonical, normalizePlateForDisplay } from '../rules/plateNormalization';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RoboflowTrafficProject } from '../config/roboflowModels';
 import { analyzeLocalImageForViolations, type InferencePlainLanguage } from '../services/roboflowOrchestrator';
+import {
+  buildModelDetectionBullets,
+  filterPredictionsForDisplay,
+  flattenProjectPredictions,
+  layoutPredictionOverlays,
+  topDisplayConfidencePercent,
+} from '../services/detectionDisplay';
+import { DetectionPreviewOverlays } from '../components/detection/DetectionPreviewOverlays';
+import { useReduxSelector } from '../store';
 import {
   BRAND_ACCENT,
   SURFACE_PANEL,
@@ -40,7 +50,7 @@ import {
 } from '../services/nativeImageCapture';
 import { extractApprox1FpsJpegUrisFromVideo } from '../services/extractVideoFrames';
 import type { SpecViolationId } from '../rules/specViolationMapping';
-import { predictionToPixelCropRect, type RoboflowPrediction } from '../services/roboflowViolationPolicy';
+import type { RoboflowPrediction } from '../services/roboflowViolationPolicy';
 import { CaptureHomeDashboard } from '../components/capture/CaptureHomeDashboard';
 import { LiveScanResultsModal } from '../components/capture/LiveScanResultsModal';
 import {
@@ -85,6 +95,8 @@ type PendingInference = {
   specViolationIds: SpecViolationId[];
   platePrediction: RoboflowPrediction | null;
   plainLanguage: InferencePlainLanguage;
+  projectPredictions: Record<RoboflowTrafficProject, RoboflowPrediction[]>;
+  specialistsSkipped: boolean;
 };
 
 function visionPhotoPathToUri(path: string): string {
@@ -221,6 +233,8 @@ export function CaptureScreen({ navigation }: Props) {
         specViolationIds: result.specViolationIds,
         platePrediction: result.platePrediction,
         plainLanguage: result.plainLanguage,
+        projectPredictions: result.projectPredictions,
+        specialistsSkipped: result.specialistsSkipped,
       });
     } catch (e) {
       const message = (e as { message?: string })?.message ?? 'Roboflow inference failed.';
@@ -809,6 +823,9 @@ export function CaptureScreen({ navigation }: Props) {
           result={pendingResult}
           platePrediction={pendingInference?.platePrediction ?? null}
           plainLanguage={pendingInference?.plainLanguage ?? null}
+          projectPredictions={pendingInference?.projectPredictions ?? null}
+          specialistsSkipped={pendingInference?.specialistsSkipped ?? false}
+          includePlateLine={(pendingInference?.specViolationIds.length ?? 0) > 0}
           plateDraft={pendingPlate}
           onPlateDraftChange={setPendingPlate}
           onSave={handleSave}
@@ -936,6 +953,9 @@ type DetectionResultProps = {
   result: Omit<ViolationRecord, 'id' | 'timestamp'>;
   platePrediction: RoboflowPrediction | null;
   plainLanguage: InferencePlainLanguage | null;
+  projectPredictions: Record<RoboflowTrafficProject, RoboflowPrediction[]> | null;
+  specialistsSkipped: boolean;
+  includePlateLine: boolean;
   plateDraft: string;
   onPlateDraftChange: (text: string) => void;
   onSave: () => void;
@@ -979,12 +999,17 @@ function DetectionResult({
   result,
   platePrediction,
   plainLanguage,
+  projectPredictions,
+  specialistsSkipped,
+  includePlateLine,
   plateDraft,
   onPlateDraftChange,
   onSave,
   onRetake,
 }: DetectionResultProps) {
   const navigation = useNavigation();
+  const displayConfidencePct = useReduxSelector(state => state.settings.detectionConfidence);
+  const displayMin = displayConfidencePct / 100;
   const hasViolations = result.violations.length > 0;
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [previewW, setPreviewW] = useState(0);
@@ -1018,22 +1043,63 @@ function DetectionResult({
     ? 'No car or motorcycle was detected in this frame, so seatbelt and helmet rules did not apply. Capture again with the vehicle clearly in view if needed.'
     : 'No traffic violations matched the rules for this scene. Nothing is sent to the queue—you can scan another image if needed.';
 
-  const plateOverlayLayout = (() => {
-    if (!platePrediction || !naturalSize || previewW <= 0) {
-      return null;
+  const overlayLayouts = useMemo(() => {
+    if (!projectPredictions || !naturalSize || previewW <= 0) {
+      return [];
     }
-    const lay = computeContainLayout(previewW, PREVIEW_H, naturalSize.w, naturalSize.h);
-    if (!lay) {
-      return null;
+    const all = flattenProjectPredictions(projectPredictions);
+    return layoutPredictionOverlays(
+      all,
+      naturalSize.w,
+      naturalSize.h,
+      previewW,
+      PREVIEW_H,
+      displayMin,
+    );
+  }, [projectPredictions, naturalSize, previewW, displayMin]);
+
+  const displayConfidenceShown = useMemo(() => {
+    if (!projectPredictions) {
+      return result.confidence;
     }
-    const crop = predictionToPixelCropRect(platePrediction, naturalSize.w, naturalSize.h);
-    return {
-      left: lay.offsetX + crop.x * lay.scale,
-      top: lay.offsetY + crop.y * lay.scale,
-      width: crop.width * lay.scale,
-      height: crop.height * lay.scale,
-    };
-  })();
+    return (
+      topDisplayConfidencePercent(
+        specialistsSkipped
+          ? [projectPredictions.vehicle ?? []]
+          : [
+              projectPredictions.vehicle ?? [],
+              projectPredictions.seatbelt ?? [],
+              projectPredictions.bike_helmet ?? [],
+              projectPredictions.mobile_phone ?? [],
+              projectPredictions.number_plate ?? [],
+            ],
+        displayMin,
+      ) || result.confidence
+    );
+  }, [projectPredictions, specialistsSkipped, displayMin, result.confidence]);
+
+  const technicalBullets = useMemo(() => {
+    if (!plainLanguage) {
+      return [];
+    }
+    if (!projectPredictions) {
+      return plainLanguage.bullets;
+    }
+    const footer =
+      plainLanguage.footerBullets?.length > 0
+        ? plainLanguage.footerBullets
+        : plainLanguage.bullets.slice(includePlateLine ? 6 : 5);
+    return [
+      plainLanguage.pipelineBullet ?? plainLanguage.bullets[0] ?? '',
+      ...buildModelDetectionBullets(
+        projectPredictions,
+        specialistsSkipped,
+        displayMin,
+        includePlateLine,
+      ),
+      ...footer,
+    ];
+  }, [plainLanguage, projectPredictions, specialistsSkipped, displayMin, includePlateLine]);
 
   const openCandidateQueue = () => {
     navigation.navigate('MainTabs', { screen: 'Queue' });
@@ -1046,20 +1112,7 @@ function DetectionResult({
           style={styles.imagePreviewWrap}
           onLayout={e => setPreviewW(e.nativeEvent.layout.width)}>
           <Image source={{ uri: imageUri }} style={styles.detectionImage} resizeMode="contain" />
-          {plateOverlayLayout ? (
-            <View
-              pointerEvents="none"
-              style={[
-                styles.plateOverlay,
-                {
-                  left: plateOverlayLayout.left,
-                  top: plateOverlayLayout.top,
-                  width: plateOverlayLayout.width,
-                  height: plateOverlayLayout.height,
-                },
-              ]}
-            />
-          ) : null}
+          <DetectionPreviewOverlays layouts={overlayLayouts} />
         </View>
       </View>
 
@@ -1091,7 +1144,9 @@ function DetectionResult({
               ]}>
               {headline}
             </Text>
-            <Text style={styles.verdictConfidence}>Model confidence (highest box): {result.confidence}%</Text>
+            <Text style={styles.verdictConfidence}>
+              Highest visible detection: {displayConfidenceShown}% (showing ≥ {displayConfidencePct}%)
+            </Text>
             {badgeLabels.length > 0 ? (
               <View style={styles.badgesWrap}>
                 {badgeLabels.map((v, i) => (
@@ -1107,7 +1162,7 @@ function DetectionResult({
         </View>
       </View>
 
-      {plainLanguage && plainLanguage.bullets.length > 0 ? (
+      {technicalBullets.length > 0 ? (
         <View style={styles.card}>
           <Pressable
             onPress={() => setTechnicalOpen(o => !o)}
@@ -1125,11 +1180,13 @@ function DetectionResult({
                 {technicalOpen ? 'Hide' : 'Show'} model & rule details
               </Text>
             </View>
-            <Text style={styles.technicalToggleHint}>Per-model boxes, thresholds, and rule flags</Text>
+            <Text style={styles.technicalToggleHint}>
+              Boxes and readouts at or above {displayConfidencePct}% · enforcement rules unchanged
+            </Text>
           </Pressable>
           {technicalOpen ? (
             <View style={styles.technicalBullets}>
-              {plainLanguage.bullets.map((line, i) => (
+              {technicalBullets.map((line, i) => (
                 <Text key={i} style={styles.technicalBullet}>
                   – {line}
                 </Text>

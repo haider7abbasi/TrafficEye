@@ -19,8 +19,8 @@ const rootReducer = combineReducers({
 const persistConfig = {
   key: 'trafficeye',
   storage: AsyncStorage,
-  /** Only client preferences — never auth tokens or Firestore mirrors. */
-  whitelist: ['settings'],
+  /** Settings are stored on the user profile in Firestore (`appSettings`). */
+  whitelist: [],
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

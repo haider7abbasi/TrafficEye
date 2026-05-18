@@ -10,35 +10,24 @@ import {
 import {
   Bell,
   Camera,
-  Eye,
-  Globe,
-  HardDrive,
-  Lock,
-  LogOut,
-  Moon,
+  CloudUpload,
   Search,
   Smartphone,
-  Sun,
-  User,
   Volume2,
 } from 'lucide-react-native';
 import { appAlert } from '../services/appAlert';
-import { useApp } from '../context/AppContext';
+import { useLoading } from '../context/LoadingContext';
+import { saveCurrentUserSettingsToFirestore } from '../services/userSettingsFirestore';
 import {
-  persistor,
   useReduxDispatch,
   useReduxSelector,
   setNotificationsEnabled,
   setSoundEnabled,
   setVibrationEnabled,
-  setDarkMode,
-  setAutoSavePhotos,
   setDetectionConfidence,
   setCameraQuality,
-  setLanguage,
-  resetSettings,
+  qualityPercentLabel,
   type CameraQualityOption,
-  type LanguageOption,
 } from '../store';
 import { BRAND_HEADER_BG, TEXT_MUTED, TEXT_PRIMARY } from '../theme/brandColors';
 
@@ -95,45 +84,20 @@ const QUALITIES: CameraQualityOption[] = [
   'Ultra (Slower)',
 ];
 
-const LANGUAGES: LanguageOption[] = ['English', 'Español', 'Français', 'Deutsch', '中文'];
-
 export function SettingsScreen() {
-  const { user, logout } = useApp();
+  const { runWithLoading } = useLoading();
   const dispatch = useReduxDispatch();
   const s = useReduxSelector(state => state.settings);
 
-  const confirmLogout = () => {
-    appAlert('Log out', 'Sign out of TrafficEye on this device?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Log out', style: 'destructive', onPress: () => void logout() },
-    ]);
-  };
-
   const onSave = async () => {
     try {
-      await persistor.flush();
-      appAlert('Saved', 'Preferences are stored on this device (AsyncStorage).');
-    } catch {
-      appAlert('Save failed', 'Could not write preferences to storage.');
+      await runWithLoading(async () => {
+        await saveCurrentUserSettingsToFirestore(s);
+      }, 'Saving settings…');
+    } catch (e) {
+      const message = (e as { message?: string })?.message ?? 'Could not save settings.';
+      appAlert('Save failed', message);
     }
-  };
-
-  const onClearLocalPreferences = () => {
-    appAlert(
-      'Clear local preferences?',
-      'Resets TrafficEye settings on this device only. It does not delete your account or cloud data.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            dispatch(resetSettings());
-            await persistor.flush();
-          },
-        },
-      ],
-    );
   };
 
   return (
@@ -173,49 +137,12 @@ export function SettingsScreen() {
 
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
-          <Eye size={ICON} color={ICON_COLOR} strokeWidth={2} />
-          <View>
-            <Text style={styles.cardTitle}>Appearance</Text>
-            <Text style={styles.cardSub}>Theme preference</Text>
-          </View>
-        </View>
-        <SettingRow
-          icon={
-            s.darkMode ? (
-              <Moon size={18} color={ICON_COLOR} strokeWidth={2} />
-            ) : (
-              <Sun size={18} color={ICON_COLOR} strokeWidth={2} />
-            )
-          }
-          title="Dark mode"
-          subtitle="Reserved for a future themed UI"
-          value={s.darkMode}
-          onChange={v => dispatch(setDarkMode(v))}
-        />
-        <View style={styles.selectorWrap}>
-          <View style={styles.selectorLabelRow}>
-            <Globe size={16} color={ICON_COLOR} strokeWidth={2} />
-            <Text style={styles.selectorLabel}>Language</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillScroll}>
-            {LANGUAGES.map(l => (
-              <Pressable
-                key={l}
-                style={[styles.pill, s.language === l && styles.pillActive]}
-                onPress={() => dispatch(setLanguage(l))}>
-                <Text style={[styles.pillTxt, s.language === l && styles.pillTxtActive]}>{l}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
           <Camera size={ICON} color={ICON_COLOR} strokeWidth={2} />
           <View>
             <Text style={styles.cardTitle}>Camera</Text>
-            <Text style={styles.cardSub}>Capture quality</Text>
+            <Text style={styles.cardSub}>
+              Camera & gallery JPEG · {qualityPercentLabel(s.cameraQuality)}
+            </Text>
           </View>
         </View>
         <View style={styles.selectorWrap}>
@@ -231,13 +158,6 @@ export function SettingsScreen() {
             ))}
           </ScrollView>
         </View>
-        <SettingRow
-          icon={<HardDrive size={18} color={ICON_COLOR} strokeWidth={2} />}
-          title="Auto-save photos"
-          subtitle="Device storage only; follow department policy"
-          value={s.autoSavePhotos}
-          onChange={v => dispatch(setAutoSavePhotos(v))}
-        />
       </View>
 
       <View style={styles.card}>
@@ -272,45 +192,13 @@ export function SettingsScreen() {
         </View>
       </View>
 
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <Lock size={ICON} color={ICON_COLOR} strokeWidth={2} />
-          <View>
-            <Text style={styles.cardTitle}>Privacy</Text>
-            <Text style={styles.cardSub}>Local data on this device</Text>
-          </View>
-        </View>
-        <Pressable style={[styles.outlineBtn, styles.dangerBtn]} onPress={onClearLocalPreferences}>
-          <Text style={styles.dangerBtnTxt}>Clear local preferences</Text>
-        </Pressable>
-      </View>
-
       <Pressable style={styles.saveBtn} onPress={onSave}>
-        <Text style={styles.saveBtnTxt}>Save to device storage</Text>
-      </Pressable>
-
-      <View style={styles.card}>
-        <View style={styles.cardTitleRow}>
-          <User size={ICON} color={ICON_COLOR} strokeWidth={2} />
-          <View style={styles.cardTitleTextCol}>
-            <Text style={styles.cardTitle}>Account</Text>
-            <Text style={styles.cardSub} numberOfLines={1}>
-              {user?.email ?? 'Signed in'}
-            </Text>
-          </View>
+        <View style={styles.saveBtnInner}>
+          <CloudUpload size={18} color="#fff" strokeWidth={2.5} />
+          <Text style={styles.saveBtnTxt}>Save settings</Text>
         </View>
-        <Text style={styles.accountName} numberOfLines={1}>
-          {user?.name ?? 'Officer'}
-        </Text>
-        <Pressable
-          style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}
-          onPress={confirmLogout}
-          accessibilityRole="button"
-          accessibilityLabel="Log out">
-          <LogOut size={18} color="#fff" strokeWidth={2.5} />
-          <Text style={styles.logoutBtnTxt}>Log out</Text>
-        </Pressable>
-      </View>
+      </Pressable>
+      <Text style={styles.saveHint}>Synced to your account in Firebase — use any signed-in device.</Text>
     </ScrollView>
   );
 }
@@ -327,18 +215,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  cardTitleTextCol: { flex: 1, minWidth: 0 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: TEXT_PRIMARY },
-  accountName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: TEXT_PRIMARY,
-    marginBottom: 12,
-    marginTop: 2,
-  },
   cardSub: { fontSize: 12, color: TEXT_MUTED },
   selectorWrap: { paddingVertical: 8, gap: 8 },
-  selectorLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   selectorLabel: { fontSize: 13, fontWeight: '500', color: '#374151' },
   pillScroll: { flexGrow: 0 },
   pill: {
@@ -375,33 +254,24 @@ const styles = StyleSheet.create({
   },
   sliderBtnTxt: { color: BRAND_HEADER_BG, fontSize: 20, lineHeight: 24, fontWeight: '700' },
   sliderHint: { flex: 1, fontSize: 11, color: TEXT_MUTED, textAlign: 'center' },
-  outlineBtn: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  dangerBtn: { borderColor: '#fecaca' },
-  dangerBtnTxt: { color: '#dc2626', fontSize: 14, fontWeight: '600' },
   saveBtn: {
     backgroundColor: BRAND_HEADER_BG,
     borderRadius: 10,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  saveBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  logoutBtn: {
+  saveBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#dc2626',
-    borderRadius: 10,
-    paddingVertical: 14,
-    marginTop: 4,
   },
-  logoutBtnPressed: { opacity: 0.9 },
-  logoutBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  saveBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  saveHint: {
+    fontSize: 12,
+    color: TEXT_MUTED,
+    textAlign: 'center',
+    marginTop: -6,
+    lineHeight: 17,
+  },
 });

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {
   IdCard,
+  LogOut,
   Mail,
   MapPin,
   Pencil,
@@ -18,6 +19,8 @@ import {
   User,
   X,
 } from 'lucide-react-native';
+import { appAlert } from '../services/appAlert';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useLoading } from '../context/LoadingContext';
 import { BRAND_ACCENT, BRAND_HEADER_BG, TEXT_MUTED, TEXT_PRIMARY } from '../theme/brandColors';
@@ -37,8 +40,9 @@ const FIELDS: { key: FieldKey; label: string; Icon: typeof User }[] = [
 ];
 
 export function ProfileScreen() {
-  const { user, updateUser, records } = useApp();
+  const { user, updateUser, records, logout } = useApp();
   const { runWithLoading } = useLoading();
+  const insets = useSafeAreaInsets();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     name: user?.name ?? '',
@@ -98,6 +102,13 @@ export function ProfileScreen() {
     }
   };
 
+  const confirmLogout = () => {
+    appAlert('Log out', 'Sign out of TrafficEye on this device?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => void logout() },
+    ]);
+  };
+
   const handleCancel = () => {
     setForm({
       name: user?.name ?? '',
@@ -111,7 +122,10 @@ export function ProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
+      showsVerticalScrollIndicator>
       <View style={styles.avatarCard}>
         <View style={styles.avatarCircle}>
           <Text style={styles.avatarText}>{initials}</Text>
@@ -122,6 +136,19 @@ export function ProfileScreen() {
           <Shield size={14} color={BRAND_HEADER_BG} strokeWidth={2.2} />
           <Text style={styles.roleText}>{user?.role ?? 'Officer'}</Text>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Account</Text>
+        <Text style={styles.cardSub}>Sign out of TrafficEye on this device</Text>
+        <Pressable
+          style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}
+          onPress={confirmLogout}
+          accessibilityRole="button"
+          accessibilityLabel="Log out">
+          <LogOut size={18} color="#fff" strokeWidth={2.5} />
+          <Text style={styles.logoutBtnTxt}>Log out</Text>
+        </Pressable>
       </View>
 
       <View style={styles.card}>
@@ -218,7 +245,7 @@ const statStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
-  content: { padding: 16, gap: 14, paddingBottom: 32 },
+  content: { padding: 16, gap: 14 },
   avatarCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -306,4 +333,16 @@ const styles = StyleSheet.create({
   },
   fieldInputDisabled: { color: '#6b7280' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  logoutBtnPressed: { opacity: 0.9 },
+  logoutBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

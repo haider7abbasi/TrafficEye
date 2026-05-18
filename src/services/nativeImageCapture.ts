@@ -1,4 +1,10 @@
-import { launchCamera, launchImageLibrary, type ImagePickerResponse } from 'react-native-image-picker';
+import {
+  launchCamera,
+  launchImageLibrary,
+  type ImagePickerResponse,
+  type PhotoQuality,
+} from 'react-native-image-picker';
+import { getCapturePhotoQuality } from '../store/cameraQuality';
 import {
   ensureAndroidCameraPermission,
   ensureAndroidGalleryReadPermission,
@@ -13,12 +19,17 @@ export type PickedImage = {
 
 export type PickedVideo = PickedImage;
 
-/** Shared still-image options (quality must stay a `PhotoQuality` literal for typings). */
-const stillPhoto = {
-  mediaType: 'photo' as const,
-  quality: 0.9 as const,
-  includeBase64: false,
-};
+function pickerPhotoQuality(): PhotoQuality {
+  return getCapturePhotoQuality() as PhotoQuality;
+}
+
+function stillPhotoOptions() {
+  return {
+    mediaType: 'photo' as const,
+    quality: pickerPhotoQuality(),
+    includeBase64: false,
+  };
+}
 
 function mapResponse(response: ImagePickerResponse): PickedImage | null {
   if (response.didCancel) {
@@ -53,7 +64,7 @@ export async function capturePhotoWithDeviceCamera(): Promise<PickedImage | null
     throw new Error('Camera permission was denied.');
   }
   const response = await launchCamera({
-    ...stillPhoto,
+    ...stillPhotoOptions(),
     saveToPhotos: false,
     cameraType: 'back',
   });
@@ -81,17 +92,19 @@ export async function pickPhotoFromDeviceLibrary(): Promise<PickedImage | null> 
     throw new Error('Photo library permission was denied.');
   }
   const response = await launchImageLibrary({
-    ...stillPhoto,
+    ...stillPhotoOptions(),
     selectionLimit: 1,
   });
   return mapResponse(response);
 }
 
-const videoPick = {
-  mediaType: 'video' as const,
-  quality: 0.9 as const,
-  includeBase64: false,
-};
+function videoPickOptions() {
+  return {
+    mediaType: 'video' as const,
+    quality: pickerPhotoQuality(),
+    includeBase64: false,
+  };
+}
 
 /** Opens the system video picker (e.g. MP4); returns `null` if the user cancels. */
 export async function pickVideoFromDeviceLibrary(): Promise<PickedVideo | null> {
@@ -100,7 +113,7 @@ export async function pickVideoFromDeviceLibrary(): Promise<PickedVideo | null> 
     throw new Error('Video library permission was denied.');
   }
   const response = await launchImageLibrary({
-    ...videoPick,
+    ...videoPickOptions(),
     selectionLimit: 1,
   });
   return mapResponse(response);
